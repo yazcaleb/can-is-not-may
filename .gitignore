@@ -1,0 +1,13 @@
+# Build scripts (generated locally)
+build_paper.py
+
+# OS files
+.DS_Store
+*.pdf
+*.aux
+*.log
+*.bbl
+*.blg
+*.out
+*.toc
+*.synctex.gz
