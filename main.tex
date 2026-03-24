@@ -11,6 +11,7 @@
 \usepackage{tabularx}
 \usepackage{array}
 \usepackage{enumitem}
+\PassOptionsToPackage{hyphens}{url}
 \usepackage{hyperref}
 \usepackage{cleveref}
 \usepackage{xcolor}
@@ -67,6 +68,10 @@
 \newcommand{\Deny}{\textsc{Deny}}
 \newcommand{\Escalate}{\textsc{Escalate}}
 \newcommand{\authoritymodel}{\textit{authority model}}
+
+% ── Font shape substitutions (lmodern lacks scit and bx+sc) ───────────
+\DeclareFontShape{T1}{lmr}{m}{scit}{<->ssub * lmr/m/scsl}{}
+\DeclareFontShape{T1}{lmr}{bx}{sc}{<->ssub * lmr/bx/n}{}
 
 % ── Spacing ───────────────────────────────────────────────────────────
 \setstretch{1.15}
@@ -125,11 +130,13 @@ The capability-authority distinction is well-established in the security literat
   \item We describe a reference implementation and position authority models within the access control, deontic logic, and agent governance literatures (\Cref{sec:implementation,sec:related}).
 \end{enumerate}
 
+\begin{samepage}
 \noindent The central claim of the paper:
 
 \begin{center}
 \textit{Capability and authority are informationally independent. Knowledge of whether an agent \Can{} perform an action provides no information about whether it \May{}. Any system conflating these layers admits privilege escalation by capability acquisition.}
 \end{center}
+\end{samepage}
 
 
 % ══════════════════════════════════════════════════════════════════════
@@ -316,7 +323,7 @@ Authority models instantiate Crawford and Ostrom's ADICO grammar for institution
 \textbf{D}eontic & $d \in \mathcal{D}$ & ``may'' / ``must not'' / ``must escalate'' \\
 a\textbf{I}m & Action $\alpha$ & ``issue refund'' \\
 \textbf{C}onditions & $R \times C \times H$ & ``amount $< \$100$, during business hours'' \\
-\textbf{O}r-else & Enforcement & Block execution (\Deny), queue for approval (\Escalate) \\
+\textbf{O}r-else & Enforcement & Block execution (\Deny); queue for human approval (\Escalate); all decisions logged \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -340,7 +347,7 @@ Default decision & Allow / Deny & Configurable & Fail-safe (deny) vs.\ fail-open
 Enforcement point & Inline / Proxy & Both & SDK for integration, gateway for MCP \\
 Policy language & Structured / NL & NL with review & Accessibility vs.\ precision \\
 Human-in-loop & Binary / Ternary & Ternary & \Escalate{} is a design choice, not an error \\
-History scope & Unbounded / Bounded & Bounded ($k$) & Required for decidability~(\Cref{thm:decidability}) \\
+History scope & Unbounded / Bounded & Bounded ($k$) & Required for $L_{\mathrm{auth}}$ decidability~(\Cref{thm:decidability}) \\
 Conflict resolution & Various & Deny-overrides & Analyzability over generality \\
 \bottomrule
 \end{tabularx}
@@ -478,7 +485,7 @@ We implemented an authority model as described in \Cref{sec:authority} in a syst
 \draw[arrow] (engine) -- (approval);
 \draw[arrow] (engine) -- node[above, font=\scriptsize] {allow} (backend);
 \draw[arrow] (engine) -- (audit);
-\draw[arrow, dashed] (approval) -| node[below left, font=\scriptsize] {human} (engine);
+\draw[arrow, dashed] ([xshift=-5pt]approval.north) -- node[left, font=\scriptsize] {human} ([xshift=-5pt]engine.south);
 
 \node[above=0.2cm of agent, font=\scriptsize\color{midgray}] {Reasoning};
 \node[above=0.2cm of backend, font=\scriptsize\color{midgray}] {Execution};
@@ -636,7 +643,7 @@ Cedar provides a formally verified policy language with decidability guarantees~
 \caption{Feature comparison: existing authorization systems vs.\ authority models.}
 \label{tab:comparison}
 \small
-\begin{tabularx}{\textwidth}{@{}l c c c c c c@{}}
+\begin{tabular}{l c c c c c c}
 \toprule
 \textbf{Feature} & \textbf{RBAC} & \textbf{ABAC} & \textbf{Cedar} & \textbf{Zanzibar} & \textbf{OPA} & \textbf{Auth.\ Model} \\
 \midrule
@@ -648,14 +655,14 @@ Delegation chains & RBAC$_2$ & Profile & -- & Relations & -- & \checkmark \\
 Decidability proof & -- & -- & \checkmark & -- & -- & \checkmark \\
 Pre-execution enforcement & PEP & PEP & PEP & Check & Admission & SDK/Gateway \\
 \bottomrule
-\end{tabularx}
+\end{tabular}
 \end{table}
 
 \noindent The contribution is not inventing authorization. It is identifying which extensions existing frameworks need for the agentic setting and proving that those extensions preserve desirable formal properties.
 
 \subsection{Deontic Logic and Institutional Analysis}
 
-Deontic logic---the logic of obligation, permission, and prohibition---originates with von Wright~\citep{vonwright1951deontic}. Standard Deontic Logic (SDL) treats norms as propositions, leading to well-known paradoxes. Input/Output logic~\citep{makinson2000input, makinson2003input} resolves these by treating norms as input/output pairs rather than truth-valued formulas. We adopt I/O logic as the conceptual substrate for authority models (\Cref{sec:authority}).
+Deontic logic, the logic of obligation, permission, and prohibition, originates with von Wright~\citep{vonwright1951deontic}. Standard Deontic Logic (SDL) treats norms as propositions, leading to well-known paradoxes. Input/Output logic~\citep{makinson2000input, makinson2003input} resolves these by treating norms as input/output pairs rather than truth-valued formulas. We adopt I/O logic as the conceptual substrate for authority models (\Cref{sec:authority}).
 
 Sergot et al.\ demonstrated the feasibility of formalizing legal rules as executable programs in their encoding of the British Nationality Act~\citep{sergot1986british}---a direct ancestor of machine-checkable authority policies. Alchourrón and Bulygin formalized normative gaps~\citep{alchourrón1971normative}, which correspond to our $\Escalate$ output. Governatori and Rotolo developed defeasible deontic logic for conflict resolution~\citep{governatori2004defeasible}, which informs our deny-overrides composition.
 
