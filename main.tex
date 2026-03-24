@@ -23,6 +23,7 @@
 \usepackage{titlesec}
 \usepackage{tcolorbox}
 \usepackage{caption}
+\usepackage{multirow}
 
 % ── Colors ────────────────────────────────────────────────────────────
 \definecolor{darkblue}{RGB}{0,51,102}
@@ -54,11 +55,17 @@
 
 % ── Theorem environments ──────────────────────────────────────────────
 \newtheorem{definition}{Definition}[section]
-\newtheorem{proposition}{Proposition}[section]
+\newtheorem{theorem}[definition]{Theorem}
+\newtheorem{corollary}[definition]{Corollary}
+\newtheorem{proposition}[definition]{Proposition}
+\newtheorem{lemma}[definition]{Lemma}
 
 % ── Custom commands ───────────────────────────────────────────────────
 \newcommand{\May}{\textsc{May}}
 \newcommand{\Can}{\textsc{Can}}
+\newcommand{\Allow}{\textsc{Allow}}
+\newcommand{\Deny}{\textsc{Deny}}
+\newcommand{\Escalate}{\textsc{Escalate}}
 \newcommand{\authoritymodel}{\textit{authority model}}
 
 % ── Spacing ───────────────────────────────────────────────────────────
@@ -70,9 +77,8 @@
 % ── Title ─────────────────────────────────────────────────────────────
 \begin{center}
   {\LARGE\bfseries\color{darkblue} Can Is Not May:\\[4pt]
-  Authority Models for Governable AI Agents}\\[12pt]
-  {\large From Capability to Legitimacy at the Action Boundary}\\[20pt]
-  {\normalsize Draft Whitepaper \quad$\cdot$\quad March 2026}\\[6pt]
+  Authority Models for Governable AI Agents}\\[20pt]
+  {\normalsize March 2026}\\[6pt]
 \end{center}
 
 \vspace{6pt}
@@ -82,283 +88,371 @@
 % ── Abstract ──────────────────────────────────────────────────────────
 \begin{abstract}
 \noindent
-Recent progress in AI agents has focused on capability, planning, and safety, yet the core problem of deployment is not only whether an agent \emph{can} act, but whether it is \emph{authorized} to act: for whom, within what scope, under what conditions, and with what recourse. We argue that this missing dimension requires a new technical primitive: the \authoritymodel{}. Authority models are machine-checkable representations of permissions, prohibitions, obligations, approvals, provenance, budgets, and revocation that govern world-affecting actions at runtime. This reframes the symbolic side of agentic AI away from symbolic cognition alone and toward symbolic legitimacy. We show why current approaches based on prompting, alignment, and post hoc monitoring are insufficient, situate authority models within neuro-symbolic and governance research, and outline a runtime architecture in which open-ended model reasoning is constrained by explicit authorization semantics at the action boundary. We conclude with a research agenda for formal semantics, benchmarks, delegation protocols, and institutional runtimes for governable AI agents.
+AI agents execute real-world actions through tool-use frameworks, but no formal mechanism ensures they are \emph{authorized} to act---only that they are capable. We introduce \emph{authority models}, a runtime primitive that evaluates proposed agent actions against machine-checkable policies before execution, extending attribute-based access control with three-valued decisions, session-aware state, and delegation-scoped authorization for the agentic setting. We formalize the $\May$ judgment---a decision function over seven parameters returning $\Allow$, $\Deny$, or $\Escalate$---and prove three properties: that capability and authority are informationally independent (\emph{Can/May Separation}), that policy composition preserves denials (\emph{Deny-Monotonicity}), and that escalation to human authority cannot be silently overridden (\emph{Escalation Monotonicity}). We show that authority models achieve Enforcement Determinism $\mathrm{ED} = 1.0$ and Degradation Under Adversarial Pressure $\mathrm{DAP} = 0.0$ by construction, as policy evaluation is deterministic and external to the model. We present AuthorityBench, an evaluation framework measuring authorization compliance across 30 scenarios at three adversarial pressure levels, and describe a reference implementation.
 \end{abstract}
-
-\vspace{8pt}
-
-\noindent\textbf{Keywords:} authority models, AI agents, runtime governance, authorization, neuro-symbolic AI, legitimacy, action boundary, tool-use safety
 
 \vspace{6pt}
 
-% ── Contributions ─────────────────────────────────────────────────────
-\begin{tcolorbox}[colback=lightgray, colframe=midgray, boxrule=0.3pt, arc=2pt, left=8pt, right=8pt, top=6pt, bottom=6pt]
-\noindent\textbf{Contributions.} This whitepaper makes four contributions. \textbf{First}, it identifies a conceptual gap in current agent discourse: the conflation of capability, safety, alignment, and authorization. \textbf{Second}, it introduces \emph{authority models} as a new technical primitive for governable agent systems. \textbf{Third}, it argues that the symbolic layer of deployed agentic AI belongs at the action boundary, where legitimacy can be represented and enforced explicitly at runtime. \textbf{Fourth}, it outlines a research agenda spanning formal semantics, delegation protocols, runtime architectures, and authority-centered evaluation.
-\end{tcolorbox}
+\noindent\textbf{Keywords:} authority models, AI agents, runtime authorization, action boundary, deontic logic, tool-use safety
 
 \vspace{4pt}
 \tableofcontents
 \newpage
 
 % ══════════════════════════════════════════════════════════════════════
-% SECTION 1
+% SECTION 1: INTRODUCTION
 % ══════════════════════════════════════════════════════════════════════
-\section{Introduction: The Field Is Optimizing the Wrong Object}
+\section{Introduction}
 \label{sec:intro}
 
-AI systems are rapidly becoming capable of taking actions in the world: executing code, calling tools, accessing records, sending messages, making purchases, and operating production systems~\citep{chan2025infrastructure}. Yet the central question of deployment is still poorly framed. Most discussion asks what these systems \emph{can} do, whether they are \emph{aligned}, or whether they are \emph{safe}. Those questions matter, but they do not resolve the most basic issue of governable agency: \emph{by what authority an agent acts}.
+An AI agent is instructed to ``clean up the development environment.'' It has tool access to delete files, drop databases, and terminate processes. The tool-use framework grants capability: every one of these actions is \emph{feasible}. But should the agent be \emph{allowed} to drop the production database? Who decides? Based on what policy? Evaluated when?
 
-A system may be capable, helpful, and even well-intentioned, while still lacking the right to perform the action it selects. A coding agent may competently deploy to production, yet have no authorization to touch the production environment. A support agent may correctly identify the right refund amount, yet exceed its delegated spending authority. A browser agent may navigate to the right vendor, yet purchase from an unapproved supplier. In each case, the action is feasible and perhaps even optimal---but it is not \emph{legitimate}~\citep{plaw2025}.
+These questions have clear answers in traditional software---access control lists, role-based permissions, capability tokens---developed over fifty years of systems security research~\citep{lampson1971protection, harrison1976protection, sandhu1996rbac}. But AI agents have not inherited this infrastructure. Large language models now browse the web, execute shell commands, access databases, send emails, and call external APIs through standardized protocols~\citep{anthropic2024mcp, mcpspec2025}. Each tool call is a point where latent model reasoning becomes concrete, world-affecting action. At this \emph{action boundary}, no authorization check occurs. The gap is not theoretical: OpenAgentSafety finds that agents ``disregard authorization entirely''~\citep{vijayvargiya2025openagentsafety}. Agent-SafetyBench reports an average safety score of 38.5\% across 16 LLM agents~\citep{zhang2024agentsafetybench}. No existing benchmark measures authorization boundaries.
 
-This whitepaper argues that agentic AI needs a missing technical primitive: the \authoritymodel{}. If world models represent what is feasible, authority models represent what is legitimate. Governable AI requires both.
+The structural reason is that current capability frameworks handle \Can{} but not \May{}. Kambhampati et al.\ established that LLMs cannot reliably self-verify their plans and require external verifiers for soundness~\citep{kambhampati2024llmmodulo, kambhampati2024tasksuccess}. We extend this insight: just as self-verification is not verification, \emph{self-authorization is not authorization}. An LLM that ``decides'' it is permitted to act provides no more guarantee of legitimate action than an LLM that ``decides'' its plan is correct. Authorization, like verification, requires an external check.
 
-The rise of tool-using agents has made this distinction urgent. Large language models are no longer confined to text generation; they browse the web, execute shell commands, access databases, send emails, manage calendars, and call external APIs through standardized protocols such as the Model Context Protocol~\citep{anthropic2024mcp, mcpspec2025}. Each tool call is a point where latent model reasoning becomes concrete, world-affecting action. At this \emph{action boundary}, the question shifts from ``Can the model generate a plausible plan?'' to ``Is this action properly constituted: attributable, scoped, constrained, reviewable, and revocable?''
+The capability-authority distinction is well-established in the security literature. Dennis and Van Horn distinguished capabilities from access rights in 1966~\citep{dennis1966programming}. Miller formalized the principle that possessing a capability token does not imply possessing the authority to use it~\citep{miller2006robust}. We argue that the AI agent community needs to import and extend this distinction for the agentic setting, where actions are open-ended, tool-mediated, and selected by probabilistic reasoning.
 
-The current field has not adequately distinguished this question from adjacent concerns. Capability research asks whether agents can complete tasks. Safety research asks whether agents avoid harm. Alignment research asks whether agents pursue the right objectives. Authorization asks a different question entirely: \emph{whether the agent has the right to act in this way, for this principal, in this context, at this time}. These four questions are conceptually orthogonal, and collapsing them into a single discourse has obscured the specific technical requirements of governable deployment.
-
-The central distinction of this paper is therefore:
-
-\begin{center}
-\textit{\textbf{\Can{} is not \May{}.}}
-\end{center}
-
-\noindent The scientific object of governable agency is not only competent action, but legitimate action. The remainder of this paper develops this thesis, introduces the technical concept of authority models, situates it within current research, and outlines a concrete architecture and research agenda.
-
-
-% ══════════════════════════════════════════════════════════════════════
-% SECTION 2
-% ══════════════════════════════════════════════════════════════════════
-\section{The Conceptual Confusion in Current Agent Discourse}
-\label{sec:confusion}
-
-The current literature on AI agents collapses four distinct questions into an undifferentiated discussion of ``agent safety.'' We argue that clarity requires separating them.
-
-\begin{enumerate}[label=\textbf{Q\arabic*.}, leftmargin=2.5em]
-  \item \textbf{Capability.} Can the agent complete the task? This is the domain of planning, reasoning, and tool-use benchmarks~\citep{kambhampati2024llmmodulo}.
-  \item \textbf{Safety.} Will the agent avoid causing harm? This is the domain of safety benchmarks, red-teaming, and guardrails~\citep{zhang2024agentsafetybench, vijayvargiya2025openagentsafety, andriushchenko2024agentharm}.
-  \item \textbf{Alignment.} Does the agent intend the right thing? This is the domain of RLHF, constitutional AI, and preference learning.
-  \item \textbf{Authorization.} Is the agent permitted to act in this way, for this principal, in this context? This is the domain we identify as undertheorized.
+\vspace{4pt}
+\noindent\textbf{Contributions.} This paper makes four contributions:
+\begin{enumerate}[leftmargin=2em, itemsep=2pt]
+  \item We formalize \emph{authority models} as a runtime authorization primitive for AI agents, defining the $\May$ judgment with seven parameters and three-valued output (\Cref{sec:authority}).
+  \item We prove three formal properties---Can/May Separation, Deny-Monotonicity, and Escalation Monotonicity---and establish decidability for a bounded policy language (\Cref{sec:properties}).
+  \item We introduce two metrics---Enforcement Determinism (ED) and Degradation Under Adversarial Pressure (DAP)---and present AuthorityBench, an evaluation framework with 30 authorization scenarios (\Cref{sec:evaluation}).
+  \item We describe a reference implementation and position authority models within the access control, deontic logic, and agent governance literatures (\Cref{sec:implementation,sec:related}).
 \end{enumerate}
 
-These questions are not reducible to one another. A system may be aligned in intention and still exceed delegated scope. A system may be safe in aggregate and still violate tenant, budget, or approval boundaries. A system may be harmless yet unauthorized. The failure modes are structurally different:
-
-\begin{itemize}[leftmargin=1.5em]
-  \item An aligned agent that issues a \$10,000 refund when its authority caps at \$100 has not failed at alignment---it has failed at authorization.
-  \item A safe agent that accesses Patient~B's records while serving Patient~A has not triggered a safety violation in the traditional sense---it has committed a scope violation.
-  \item A helpful coding agent that deploys to production instead of staging has not been harmful---it has exceeded its delegated operational boundary.
-\end{itemize}
-
-The critical insight is:
+\noindent The central claim of the paper:
 
 \begin{center}
-\textit{Alignment addresses behavior; authorization addresses legitimacy.}
+\textit{Capability and authority are informationally independent. Knowledge of whether an agent \Can{} perform an action provides no information about whether it \May{}. Any system conflating these layers admits privilege escalation by capability acquisition.}
 \end{center}
 
-Current benchmark efforts confirm that agent safety remains an open problem. Agent-SafetyBench evaluates 16 popular LLM agents across 2,000 test cases and finds that none achieves a safety score above 60\%~\citep{zhang2024agentsafetybench}. OpenAgentSafety reports unsafe behavior in 51--73\% of safety-vulnerable tasks across leading models~\citep{vijayvargiya2025openagentsafety}. R-Judge identifies safety risks across 27 risk scenarios~\citep{yuan2024rjudge}. ToolEmu finds that even the safest LM agent exhibits potentially severe failures 23.9\% of the time~\citep{ruan2024toolemu}. Commercial agents are vulnerable to straightforward attacks that exploit their tool-use capabilities~\citep{li2025commercialvulnerable}.
 
-These results are alarming, but they also reveal a gap: existing benchmarks primarily measure \emph{unsafe} behavior (harm, misuse, adversarial exploitation) rather than \emph{unauthorized} behavior (scope violations, wrong-principal execution, budget overruns, missing approvals). The distinction matters because an agent can pass every safety test and still act without legitimate authority. If even overt safety remains unresolved, the subtler problem of legitimacy is even less likely to emerge reliably from model behavior alone.
+% ══════════════════════════════════════════════════════════════════════
+% SECTION 2: BACKGROUND & PROBLEM STATEMENT
+% ══════════════════════════════════════════════════════════════════════
+\section{Background and Problem Statement}
+\label{sec:background}
 
-\begin{figure}[!ht]
+\subsection{The Agent Action Pipeline}
+
+Tool-using agents follow a common pattern: the LLM receives a prompt, reasons about the task, generates a structured tool call (function name + arguments), the framework dispatches the call, the tool executes, and the result is returned to the LLM. The Model Context Protocol (MCP) standardizes this interface~\citep{anthropic2024mcp, mcpspec2025}. At no point in this pipeline is authorization checked. The framework verifies that the tool \emph{exists} and the arguments are \emph{well-typed}, but not that the agent is \emph{permitted} to invoke it in this context.
+
+\subsection{Current Approaches and Their Limitations}
+
+Four families of approaches constrain agent behavior, but none addresses authorization as a formal property.
+
+\begin{table}[!ht]
 \centering
-\begin{tikzpicture}[
-  box/.style={draw, rounded corners=3pt, minimum width=5.2cm, minimum height=1.3cm, align=center, font=\small\bfseries},
-  label/.style={font=\small, align=center, text width=5.2cm},
-]
-\node[box, fill=blue!8] (cap) at (0,3.2) {Q1: Capability\\[2pt]\normalfont\small Can it do it?};
-\node[box, fill=green!8] (safe) at (6.5,3.2) {Q2: Safety\\[2pt]\normalfont\small Will it do it safely?};
-\node[box, fill=orange!8] (align) at (0,0) {Q3: Alignment\\[2pt]\normalfont\small Does it intend the right thing?};
-\node[box, fill=red!8, line width=1.2pt] (auth) at (6.5,0) {Q4: Authorization\\[2pt]\normalfont\small Is it permitted to do it?};
+\caption{Current approaches to constraining agent behavior.}
+\label{tab:approaches}
+\small
+\begin{tabularx}{\textwidth}{@{}l l X@{}}
+\toprule
+\textbf{Approach} & \textbf{Mechanism} & \textbf{Why it is insufficient for authorization} \\
+\midrule
+Prompt constraints & System prompt rules & Non-binding. Stochastic compliance. Cannot be audited or version-controlled. Defense prompts alone are insufficient~\citep{zhang2024agentsafetybench}. \\
+Alignment / RLHF & Training-time preferences & Shapes behavior, not delegation. ``Wanting to help'' $\neq$ ``authorized to act.'' Cannot express per-principal, per-context constraints~\citep{pierucci2026institutionalai}. \\
+Output monitoring & Post-hoc detection & Too late for irreversible actions. Catches violations retroactively, not preventively~\citep{wang2025agentspec, chen2025shieldagent}. \\
+Platform guardrails & Provider-specific filters & Narrow scope. Provider-locked. Constrain content, not authorization. A guardrail blocks toxic text; it does not block an unauthorized purchase order. \\
+\bottomrule
+\end{tabularx}
+\end{table}
 
-\node[below=2pt of cap, label] {\footnotesize Planning, reasoning, tool use};
-\node[below=2pt of safe, label] {\footnotesize Harm avoidance, guardrails};
-\node[below=2pt of align, label] {\footnotesize RLHF, preferences, values};
-\node[below=2pt of auth, label] {\footnotesize\textbf{Scope, delegation, legitimacy}};
-\end{tikzpicture}
-\caption{The Four Questions of Agent Deployment. Current discourse predominantly addresses Q1--Q3. This paper argues Q4---authorization---is a distinct and undertheorized requirement.}
-\label{fig:four-questions}
-\end{figure}
+\subsection{Desiderata}
+
+A solution to the authorization problem must satisfy six requirements:
+\begin{enumerate}[leftmargin=2em, itemsep=1pt]
+  \item \textbf{Deterministic.} Same request, same policy, same decision. No stochastic variance.
+  \item \textbf{Pre-execution.} Evaluated before the tool call executes, not after.
+  \item \textbf{External.} Not embedded in the LLM's context. The agent cannot override the check.
+  \item \textbf{Composable.} Multiple policies combine with predictable semantics.
+  \item \textbf{Delegable.} The principal who authorizes and the agent who acts are distinct entities.
+  \item \textbf{Escalable.} ``Uncertain'' is a valid output---defer to human judgment rather than default to execution.
+\end{enumerate}
+
+\subsection{Threat Model}
+
+We consider an agent with tool access acting on behalf of a principal, where the agent may: (a)~exceed its delegated scope, (b)~violate budget, temporal, or tenant constraints, (c)~be manipulated via prompt injection into unauthorized actions, or (d)~fail to escalate when policy is ambiguous. We assume honest principals---the threat is unauthorized \emph{agent} action, not principal-agent collusion.
 
 
 % ══════════════════════════════════════════════════════════════════════
-% SECTION 3
+% SECTION 3: AUTHORITY MODELS
 % ══════════════════════════════════════════════════════════════════════
-\section{Authority as the Missing Primitive}
+\section{Authority Models}
 \label{sec:authority}
 
-We now introduce the core concept of this paper: the \authoritymodel{}.
+\noindent\textbf{Notation.} Let $\mathcal{P}$ be the set of principals, $\mathcal{G}$ the set of agents, $\mathcal{A}$ the set of actions, $\mathcal{R}$ the set of resources, and $\Pi$ a finite set of policies. We write $\mathcal{D} = \{\Allow, \Deny, \Escalate\}$ for the decision domain.
+
+\subsection{The \texorpdfstring{$\May$}{May} Judgment}
 
 \begin{definition}[Authority Model]
-An \textbf{authority model} is a machine-checkable representation of the conditions under which an agent's action is \emph{properly constituted}---that is, attributable to a principal, within delegated scope, satisfying contextual constraints, and subject to review, revocation, and audit.
+\label{def:authority-model}
+An \textbf{authority model} is a machine-checkable representation of the conditions under which an agent's action is \emph{properly constituted}---attributable to a principal, within delegated scope, satisfying contextual constraints, and subject to review, revocation, and audit.
 \end{definition}
 
-Authority models encode the following elements:
+The core evaluation function is the $\May$ judgment:
+
+\begin{equation}
+\May(P, G, \alpha, R, C, H, \Pi) \;\to\; \mathcal{D}
+\label{eq:may}
+\end{equation}
+
+\noindent where the seven parameters are:
 
 \begin{table}[!ht]
 \centering
-\caption{Elements of an Authority Model}
-\label{tab:authority-elements}
+\caption{Parameters of the $\May$ judgment.}
+\label{tab:may-params}
 \small
-\begin{tabularx}{\textwidth}{@{}l X@{}}
+\begin{tabularx}{\textwidth}{@{}l l X@{}}
 \toprule
-\textbf{Element} & \textbf{Description} \\
+\textbf{Symbol} & \textbf{Name} & \textbf{Description} \\
 \midrule
-Principal & The human or organizational entity on whose behalf the agent acts \\
-Delegated scope & The set of actions, resources, and contexts the agent is authorized to affect \\
-Action type & The category of operation (read, write, execute, communicate, transact) \\
-Object / Resource & The specific data, system, or entity being acted upon \\
-Contextual constraints & Time windows, geographic restrictions, session state, prior-action conditions \\
-Obligations & Post-conditions the agent must fulfill (logging, notification, confirmation) \\
-Approvals & Pre-conditions requiring human sign-off before execution \\
-Budgets & Quantitative limits on spending, API calls, tokens, or resource consumption \\
-Provenance & Chain of delegation from original principal through intermediaries to agent \\
-Revocation & Mechanisms for withdrawing authority, including time-based expiry \\
-Auditability & Requirements for logging, traceability, and post-hoc review \\
+$P \in \mathcal{P}$ & Principal & The human or organizational entity that delegated authority. $P \neq G$ is required. \\
+$G \in \mathcal{G}$ & Agent & The computational entity performing the action, acting on behalf of $P$. \\
+$\alpha \in \mathcal{A}$ & Action & The tool call being evaluated (function name + arguments). \\
+$R \in \mathcal{R}$ & Resource & The target of the action (database, API endpoint, file). \\
+$C$ & Context & Environmental attributes at evaluation time (timestamp, session ID, IP, metadata). \\
+$H = [(a_1, d_1), \ldots, (a_k, d_k)]$ & History & Ordered sequence of prior (action, decision) pairs in the current session, bounded to window size $k$. \\
+$\Pi = \{\pi_1, \ldots, \pi_n\}$ & Policy set & A finite set of rules, each mapping inputs to a decision. \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-Authority models are a \emph{distinct} technical object. They are not reducible to existing constructs, although they absorb ideas from several:
+This is paired with a capability judgment:
 
-\begin{itemize}[leftmargin=1.5em]
-  \item \textbf{Not just RBAC.} Role-based access control assigns permissions to roles, but AI agents create dynamic, context-dependent authority requirements that static role assignments cannot capture. An agent's authority may depend on the conversation history, the current principal's preferences, and cross-tool interaction state.
+\begin{equation}
+\Can(W, \alpha, s) \;\to\; \{\textsc{Feasible}, \textsc{Infeasible}\}
+\label{eq:can}
+\end{equation}
 
-  \item \textbf{Not just IAM.} Identity and access management authenticates identity and checks permissions, but does not represent delegation chains, budget constraints, or obligation semantics specific to autonomous agents.
+\noindent An action executes if and only if \emph{both} judgments are satisfied:
 
-  \item \textbf{Not just policy-as-code.} Policy engines evaluate rules, but authority models require richer semantics: delegation provenance, temporal constraints, escalation logic, and principaled accountability.
+\begin{equation}
+\mathit{Execute}(\alpha) \;\iff\; \Can(W, \alpha, s) = \textsc{Feasible} \;\wedge\; \May(P, G, \alpha, R, C, H, \Pi) = \Allow
+\label{eq:execute}
+\end{equation}
 
-  \item \textbf{Not just guardrails.} Guardrails constrain output content; authority models constrain action legitimacy. A guardrail might block toxic text; an authority model blocks a correctly-worded but unauthorized purchase order.
+\subsection{Decision Lattice}
 
-  \item \textbf{Not just legal agency.} Legal frameworks define when one party can act for another, but authority models must be machine-checkable at runtime, operating at millisecond latencies within tool-call pipelines.
-\end{itemize}
+The decision domain $\mathcal{D}$ forms a chain lattice under the ordering $\Allow \sqsubseteq \Escalate \sqsubseteq \Deny$:
 
-AI agents create a \emph{new} need for authority models because their action selection is open-ended, tool-mediated, and language-driven. Unlike traditional software, which executes predetermined code paths, an LLM agent may propose any tool call that its reasoning produces. The space of possible actions is unbounded, and the mapping from natural language intent to concrete API calls is probabilistic. This means that authorization cannot be hardcoded; it must be represented as an explicit, runtime-checkable model that evaluates each proposed action against the current authority context.
+\begin{center}
+\begin{tikzpicture}[node distance=0.8cm]
+  \node (deny) {\Deny};
+  \node[below=of deny] (esc) {\Escalate};
+  \node[below=of esc] (allow) {\Allow};
+  \draw[-] (allow) -- (esc);
+  \draw[-] (esc) -- (deny);
+  \node[right=0.6cm of deny, font=\small\color{midgray}] {(most restrictive)};
+  \node[right=0.6cm of esc, font=\small\color{midgray}] {(defer to human)};
+  \node[right=0.6cm of allow, font=\small\color{midgray}] {(least restrictive)};
+\end{tikzpicture}
+\end{center}
 
-Recent work on authenticated delegation provides a bridge toward this vision. South et al.\ propose a framework for authenticated, authorized, and auditable delegation of authority to AI agents, extending OAuth~2.0 and OpenID Connect with agent-specific credentials and metadata~\citep{south2025authenticated}. The OpenID Foundation has published a companion whitepaper on identity management for agentic AI~\citep{south2025identitymgmt}, and OIDC-A extends OpenID Connect with agent identity representation, delegation chain validation, and capability-based authorization~\citep{nagabhushanaradhya2025oidca}. Agent Contracts formalize resource-bounded execution with input/output specifications, multi-dimensional resource constraints, and temporal boundaries~\citep{ye2026agentcontracts}. These efforts collectively confirm that authenticated delegation is an active area of infrastructure development.
+\noindent The join $d_1 \sqcup d_2$ returns the more restrictive decision: $\Allow \sqcup \Escalate = \Escalate$, $\Escalate \sqcup \Deny = \Deny$, etc. The meet $d_1 \sqcap d_2$ returns the less restrictive. This three-valued structure is the first extension beyond standard access control: most authorization systems are two-valued (permit/deny). XACML's four-valued output (\textsc{Permit}, \textsc{Deny}, \textsc{NotApplicable}, \textsc{Indeterminate}) conflates ``no policy applies'' with ``requires human judgment''~\citep{xacml2013}. $\Escalate$ is semantically distinct: it means the normative status is undetermined and requires human authority to resolve.
+
+\subsection{Policy Composition}
+
+We define the \emph{deny-overrides} composition operator $\oplus$:
+
+\begin{definition}[Policy Composition]
+\label{def:composition}
+For policies $\pi_1, \pi_2$ and request $r$:
+\begin{align}
+(\pi_1 \oplus \pi_2)(r) &= \pi_1(r) \sqcup \pi_2(r)
+\end{align}
+For a policy set $\Pi = \{\pi_1, \ldots, \pi_n\}$:
+\begin{align}
+\oplus(\emptyset)(r) &= \Allow \quad\text{(identity element)} \\
+\oplus(\Pi)(r) &= \bigsqcup_{\pi \in \Pi} \pi(r)
+\end{align}
+\end{definition}
 
 \begin{proposition}
-An authority model specifies not only whether an action is possible, but whether it is properly constituted.
+$(\mathcal{D}, \oplus)$ is a commutative monoid with identity $\Allow$.
 \end{proposition}
 
-This is the technical claim of the paper. The remainder develops its implications for architecture, formal semantics, and evaluation.
+\begin{proof}
+Associativity: $\sqcup$ on a chain lattice is associative. Commutativity: $\sqcup$ on a chain is commutative. Identity: $\Allow \sqcup d = d$ for all $d \in \mathcal{D}$.
+\end{proof}
 
+\noindent This is an instance of the deny-overrides combining algorithm from XACML~\citep{xacml2013}, restricted to our three-valued domain. The restriction is deliberate: we trade XACML's generality (multiple combining algorithms) for analyzability (a single, well-understood operator with provable properties).
 
-% ══════════════════════════════════════════════════════════════════════
-% SECTION 4
-% ══════════════════════════════════════════════════════════════════════
-\section{Why This Is the Symbolic Side of Agentic AI}
-\label{sec:symbolic}
+\subsection{Connection to Input/Output Logic}
 
-The neuro-symbolic AI literature has traditionally focused on integrating symbolic reasoning \emph{inside} model cognition: logical inference, knowledge graphs, constraint satisfaction, and structured representations that augment neural learning~\citep{feldstein2024neurosymbolic, belle2024neurosymbolicagents}. We argue that for deployed tool-using agents, there is a second symbolic function that is equally important: \emph{symbolic legitimacy}.
+Authority models fit naturally into the Input/Output (I/O) logic framework of Makinson and van der Torre~\citep{makinson2000input, makinson2003input}. In I/O logic, norms are not truth-valued propositions but ordered pairs $(a, x)$ where $a$ is an input (the factual antecedent) and $x$ is the output (the normative consequent). Given a norm set $G$ and input $A$, the output $\mathrm{out}(G, A)$ is derived by collecting the consequents of triggered norms and closing under logical consequence. This avoids the paradoxes of Standard Deontic Logic---Ross's paradox (obligation closed under disjunction), Chisholm's contrary-to-duty paradox (conflicting obligations from violated norms), and the Good Samaritan paradox (obligating the presupposition of an obligation)---which arise from treating norms as propositions closed under classical logic~\citep{vonwright1951deontic, sep-deontic}. In I/O logic, norms sit \emph{between} input and output as a transformation device; logical closure applies to inputs and outputs separately, not to the norms themselves.
 
-The LLM-Modulo framework provides the stepping stone. Kambhampati et al.\ argue that LLMs cannot reliably plan or self-verify, and propose pairing them with external model-based verifiers in a tighter bi-directional interaction regime~\citep{kambhampati2024llmmodulo}. The verifier checks whether a proposed plan is \emph{feasible}---whether it satisfies domain constraints, precondition-effect semantics, and goal reachability. This is an important architectural insight: neural generation needs external symbolic checking.
+An authority policy $\pi$ is an I/O pair: the input is the request tuple $(P, G, \alpha, R, C, H)$ and the output is $d \in \mathcal{D}$. The policy set $\Pi$ is a set of such pairs. Evaluating $\May$ is computing the output of a normative system given an input context---precisely the operation I/O logic formalizes. When policies conflict (one norm outputs \Allow, another \Deny{} for the same request), I/O logic's \emph{constrained output} filters through maximal consistent subsets---a conservative mechanism that, in our framework, maps naturally to \Escalate{} when genuine ambiguity remains.
 
-Our extension is: \emph{even a correct or feasible plan still needs a legitimacy judgment}. A world model answers what \emph{can} happen given the current state. An authority model answers what \emph{may} happen given the current authorization context. Both are external to the LLM. Both operate symbolically. Both are necessary for governable deployment.
+The three-valued output maps to deontic operators:
+\begin{itemize}[leftmargin=1.5em, itemsep=1pt]
+  \item $\Allow \approx \mathsf{PE}(\alpha)$: the action is \emph{permitted}.
+  \item $\Deny \approx \mathsf{IM}(\alpha) \equiv \mathsf{OB}(\neg\alpha)$: the action is \emph{impermissible}.
+  \item $\Escalate$: the normative status of $\alpha$ is undetermined---a \emph{normative gap} in the sense of Alchourrón and Bulygin~\citep{alchourrón1971normative}, combined with a procedural default (defer to human authority). This has no direct counterpart in Standard Deontic Logic, where every action is either permitted or forbidden, but is well-studied in the normative systems literature.
+\end{itemize}
+
+\noindent Where policies conflict, we apply defeasible reasoning: the deny-overrides operator $\oplus$ is a specificity-free conflict resolution mechanism~\citep{governatori2004defeasible}. More complex priority schemes (temporal ordering, hierarchical specificity) can be layered on top.
+
+\subsection{Institutional Grammar Mapping}
+
+Authority models instantiate Crawford and Ostrom's ADICO grammar for institutional statements~\citep{crawford1995grammar}:
 
 \begin{table}[!ht]
 \centering
-\caption{Capability Models vs.\ World Models vs.\ Authority Models}
-\label{tab:three-models}
+\caption{Mapping authority models to the ADICO institutional grammar.}
+\label{tab:adico}
 \small
-\begin{tabularx}{\textwidth}{@{}l >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X@{}}
+\begin{tabularx}{\textwidth}{@{}l l X@{}}
 \toprule
-& \textbf{Capability Model} & \textbf{World Model / Verifier} & \textbf{Authority Model} \\
+\textbf{ADICO Component} & \textbf{Authority Model} & \textbf{Example} \\
 \midrule
-\textbf{Object represented} & What the model can generate & What is feasible / correct & What is permitted / legitimate \\
-\textbf{Question answered} & Can the model produce this? & Is this plan valid? & Is this action authorized? \\
-\textbf{Typical substrate} & Neural weights, token space & Domain axioms, simulators & Policies, delegation chains \\
-\textbf{Failure if missing} & Incompetent action & Infeasible or incorrect action & Unauthorized action \\
+\textbf{A}ttributes & Principal $P$ + Agent $G$ & ``Support agent acting for Tenant A'' \\
+\textbf{D}eontic & $d \in \mathcal{D}$ & ``may'' / ``must not'' / ``must escalate'' \\
+a\textbf{I}m & Action $\alpha$ & ``issue refund'' \\
+\textbf{C}onditions & $R \times C \times H$ & ``amount $< \$100$, during business hours'' \\
+\textbf{O}r-else & Enforcement & Block execution (\Deny), queue for approval (\Escalate) \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-The symbolic contribution of authority models is not classical symbolic cognition in the narrow sense. It is \emph{symbolic structure over permissions, obligations, prohibitions, and institutional constraints}. This connects to the tradition of deontic logic---the logic of obligation, permission, and prohibition---which provides formal tools for reasoning about normative status~\citep{sep-deontic, fang2025deonticai}. In deontic terms, an authority model specifies what is \emph{permitted} ($\mathsf{PE}$), \emph{obligatory} ($\mathsf{OB}$), and \emph{forbidden} ($\mathsf{IM}$) for an agent in a given context.
+\noindent This positions authority models as a computational instantiation of Ostrom's institutional analysis framework~\citep{ostrom1990governing}. The $\May$ judgment operationalizes what institutional economists call ``rules-in-use''---the operational rules that govern action within an institutional setting. At least five of Ostrom's eight design principles for governing common-pool resources map to authority model elements: clearly defined boundaries (delegated scope), congruence between rules and local conditions (contextual constraints), collective-choice arrangements (approval mechanisms), monitoring (audit trail), and graduated sanctions (escalation before denial).
 
-The key claim of this section:
+\subsection{Design Space}
 
-\begin{center}
-\textit{The symbolic layer of modern agents should not only help them reason better; it should help constitute legitimate action.}
-\end{center}
+Following DeCandia et al.'s Dynamo technique-table strategy~\citep{decandia2007dynamo}, we make explicit the design choices and their tradeoffs:
 
-We do not claim that all symbolic AI is now about authorization. We claim that for deployed tool-using agents, authorization is one of the most important and underserved symbolic functions.
-
-
-% ══════════════════════════════════════════════════════════════════════
-% SECTION 5
-% ══════════════════════════════════════════════════════════════════════
-\section{Why Prompting, Alignment, and Post Hoc Monitoring Are Not Enough}
-\label{sec:insufficient}
-
-Three families of approaches currently dominate attempts to constrain agent behavior. We argue that each is structurally insufficient for ensuring legitimacy.
-
-\subsection{Prompt Constraints}
-
-System prompts and instruction tuning can express intent (``do not exceed \$100 refunds'') but cannot \emph{enforce} it. Prompts are advisory, not binding. The model may comply probabilistically, but there is no guarantee that a natural-language instruction will be followed under all input distributions, adversarial conditions, or long-horizon reasoning chains. Agent-SafetyBench confirms that defense prompts alone are insufficient to address safety challenges~\citep{zhang2024agentsafetybench}. Potham's lightweight benchmark reveals an ``illusion of compliance'' where high adherence scores often mask task incompetence rather than principled choice~\citep{potham2025hierarchical}. Prompts cannot be audited, version-controlled, or formally verified in the same way that machine-checkable policies can.
-
-\subsection{Model Alignment and Safety Tuning}
-
-Alignment techniques (RLHF, DPO, constitutional AI) shape model preferences, but preferences are not the same as delegated authority. An aligned model may \emph{want} to help, but ``wanting to help'' is not the same as ``being authorized to act.'' Alignment addresses the \emph{behavioral} question (``does the model tend toward good outcomes?'') but not the \emph{institutional} question (``does this specific action fall within the agent's delegated scope?''). Furthermore, alignment is a training-time property; authorization is a runtime property that depends on who is asking, what they have delegated, and what constraints currently apply.
-
-The Institutional AI framework makes this point sharply: even sophisticated alignment methods ``cannot ensure control once internal goal structures diverge from developer intent''~\citep{pierucci2026institutionalai}. Behavioral goal-independence, instrumental override of natural-language constraints, and agentic alignment drift are structural problems that alignment alone cannot resolve.
-
-\subsection{Post Hoc Monitoring and Anomaly Detection}
-
-Monitoring systems observe agent behavior and flag anomalies after actions occur. This is valuable for audit and learning, but it is \emph{too late} for irreversible actions. Once a production database has been modified, a financial transaction executed, or a confidential message sent, detection after the fact cannot undo the consequence. For high-stakes, world-affecting actions, \emph{authorization must be constitutive, not merely advisory}.
-
-AgentSpec demonstrates that runtime enforcement \emph{before} action execution can prevent over 90\% of unsafe code executions, while post hoc approaches catch violations only retroactively~\citep{wang2025agentspec}. ShieldAgent similarly shows that verifiable safety policy reasoning at execution time significantly outperforms retrospective detection~\citep{chen2025shieldagent}.
-
-The structural conclusion is:
-
-\begin{center}
-\textit{Authorization must be constitutive, not merely advisory.}
-\end{center}
-
-\noindent That is, legitimacy must be checked \emph{before} the action executes, as a condition on execution---not as a suggestion, a preference, or a post-hoc observation.
-
-\paragraph{Illustrative cases.}
-\begin{itemize}[leftmargin=1.5em]
-  \item A \textbf{refund agent} can issue refunds, but may not exceed \$100 without approval.
-  \item A \textbf{coding agent} can run shell commands, but may not touch production.
-  \item A \textbf{support agent} can view records, but may not cross tenant boundaries.
-  \item A \textbf{browser agent} can purchase, but only from approved vendors within budget.
-\end{itemize}
-
-In each case, the constraint is not about capability or safety in the general sense. It is about the specific terms of delegation under which the agent operates.
+\begin{table}[!ht]
+\centering
+\caption{Design space for authority models.}
+\label{tab:design-space}
+\small
+\begin{tabularx}{\textwidth}{@{}l l l X@{}}
+\toprule
+\textbf{Challenge} & \textbf{Alternatives} & \textbf{Our choice} & \textbf{Rationale} \\
+\midrule
+Default decision & Allow / Deny & Configurable & Fail-safe (deny) vs.\ fail-open tradeoff \\
+Enforcement point & Inline / Proxy & Both & SDK for integration, gateway for MCP \\
+Policy language & Structured / NL & NL with review & Accessibility vs.\ precision \\
+Human-in-loop & Binary / Ternary & Ternary & \Escalate{} is a design choice, not an error \\
+History scope & Unbounded / Bounded & Bounded ($k$) & Required for decidability~(\Cref{thm:decidability}) \\
+Conflict resolution & Various & Deny-overrides & Analyzability over generality \\
+\bottomrule
+\end{tabularx}
+\end{table}
 
 
 % ══════════════════════════════════════════════════════════════════════
-% SECTION 6
+% SECTION 4: FORMAL PROPERTIES
 % ══════════════════════════════════════════════════════════════════════
-\section{The Runtime View: Authority Belongs Where Actions Leave the Model}
-\label{sec:runtime}
+\section{Formal Properties}
+\label{sec:properties}
 
-The critical control point for authority enforcement is the \emph{action boundary}: the interface where open-ended language-based reasoning becomes concrete, world-affecting tool execution.
+We prove three properties of authority models and establish decidability for a bounded policy language.
 
-\subsection{Why the Action Boundary Is the Right Enforcement Point}
+\subsection{Can/May Separation}
 
-Consider the lifecycle of an agent action. The LLM receives a prompt, reasons about the task, formulates a plan, and proposes a tool call. Until that tool call is executed, nothing in the world has changed. The action boundary is the moment of \emph{transition from latent intent to external consequence}. This is precisely where authorization must be evaluated, because:
+The central theorem states that capability and authority are independent: knowing what an agent \emph{can} do tells you nothing about what it \emph{may} do.
 
-\begin{enumerate}[leftmargin=2em]
-  \item \textbf{It is concrete.} A tool call has a defined function name, arguments, and target resource. These are machine-parseable and evaluable against policies.
-  \item \textbf{It is the last opportunity for intervention.} Once the tool executes, its effects may be irreversible.
-  \item \textbf{It is composable.} Multiple tools in a workflow create a sequence of action boundaries, each of which can be independently authorized.
-  \item \textbf{It is framework-agnostic.} The action boundary exists regardless of which LLM, agent framework, or orchestration layer is used.
+\begin{theorem}[Can/May Independence]
+\label{thm:canmay}
+Let $\Can: \mathcal{A} \to \{0, 1\}$ be a capability predicate and $\May: \mathcal{A} \times \Sigma \to \mathcal{D}$ be an authority function over policy-state space $\Sigma$. The systems are informationally independent: for any $c \in \{0,1\}$ and $d \in \mathcal{D}$, there exists a configuration $(\Can, \May, \sigma, \alpha)$ such that $\Can(\alpha) = c$ and $\May(\alpha, \sigma) = d$.
+\end{theorem}
+
+\begin{proof}
+We exhibit configurations for all six cells of the $\{0,1\} \times \mathcal{D}$ product:
+
+\begin{enumerate}[label=(\roman*), leftmargin=2em, itemsep=1pt]
+  \item $\Can(\alpha) = 1 \wedge \May(\alpha, \sigma) = \Deny$. An agent possesses valid API credentials for a database ($\Can = 1$). Policy prohibits production modifications outside maintenance windows ($\May = \Deny$).
+  \item $\Can(\alpha) = 0 \wedge \May(\alpha, \sigma) = \Allow$. Policy permits deployment to staging ($\May = \Allow$). The agent lacks SSH credentials ($\Can = 0$).
+  \item $\Can(\alpha) = 1 \wedge \May(\alpha, \sigma) = \Allow$. The agent has credentials and the policy permits the action.
+  \item $\Can(\alpha) = 0 \wedge \May(\alpha, \sigma) = \Deny$. The agent lacks credentials and the policy forbids the action.
+  \item $\Can(\alpha) = 1 \wedge \May(\alpha, \sigma) = \Escalate$. The agent has tool access but the action's cost exceeds the automated approval threshold.
+  \item $\Can(\alpha) = 0 \wedge \May(\alpha, \sigma) = \Escalate$. The agent lacks credentials and the policy requires human review for this action category.
 \end{enumerate}
 
-The Model Context Protocol standardizes this interface, defining a structured protocol for how LLMs invoke external tools, read resources, and manage contextual prompts~\citep{anthropic2024mcp, mcpspec2025}. MCP creates a natural interception point: every tool call passes through a defined protocol boundary that can be instrumented with authorization logic.
+\noindent Since $\Can$ depends on tool availability (credentials, network access, installed software) and $\May$ depends on policy state (delegation scope, budget limits, temporal constraints), the two functions are defined over independent information sources. All six combinations are realizable.
+\end{proof}
 
-\subsection{Why Enforcement Must Be Explicit}
+\begin{corollary}[Capability-Authority Conflation Attack]
+\label{cor:conflation}
+Any system where $\May(\alpha) = \Allow$ whenever $\Can(\alpha) = 1$---i.e., capability implies authority---admits an attack: acquiring a capability automatically grants authority, violating the principle of least authority~\citep{miller2006robust, dennis1966programming}. Formally, if $\forall \alpha: \Can(\alpha) = 1 \implies \May(\alpha) = \Allow$, then any capability escalation is simultaneously an authority escalation.
+\end{corollary}
 
-Authorization at the action boundary must be explicit---not implicit in model weights, not suggested via prompts, and not inferred from behavioral patterns. Explicit enforcement means:
+\begin{proof}
+By contraposition. If capability implied authority, then an adversary who obtains tool access (e.g., via prompt injection that reveals an API key) would automatically be authorized for all operations the tool supports. This contradicts Theorem~\ref{thm:canmay}, which shows that capability and authority are independently configurable. The conflation eliminates the authority check entirely.
+\end{proof}
 
-\begin{itemize}[leftmargin=1.5em]
-  \item Policies are written in a declarative format that can be inspected, version-controlled, and audited.
-  \item Decisions (allow, deny, escalate) are deterministic given the policy and context.
-  \item The agent itself does not need to ``understand'' or ``agree with'' the policy; enforcement is external to the model.
-\end{itemize}
+\subsection{Deny-Monotonicity}
 
-This last point is crucial. If the model must cooperate with the authorization system for it to work, then a misaligned, jailbroken, or simply confused model can circumvent it. External enforcement at the tool boundary is robust precisely because it does not depend on model behavior.
+\begin{theorem}[Deny-Monotonicity]
+\label{thm:deny-mono}
+For any policy set $S \subseteq \Pi$ and policy $p \in \Pi$: if $\oplus(S)(r) = \Deny$, then $\oplus(S \cup \{p\})(r) = \Deny$.
+\end{theorem}
 
-\subsection{The Runtime Architecture}
+\begin{proof}
+$\oplus(S \cup \{p\})(r) = \oplus(S)(r) \sqcup p(r) = \Deny \sqcup p(r)$. Since $\Deny$ is the top element of $(\mathcal{D}, \sqsubseteq)$, we have $\Deny \sqcup d = \Deny$ for all $d \in \mathcal{D}$. Therefore $\oplus(S \cup \{p\})(r) = \Deny$.
+\end{proof}
+
+\begin{corollary}[Safety Preservation]
+\label{cor:safety}
+No additional policy can override an existing denial. Security-critical deny rules cannot be circumvented by adding permissive policies.
+\end{corollary}
+
+\subsection{Escalation Monotonicity}
+
+\begin{theorem}[Escalation Monotonicity]
+\label{thm:escalation}
+For any policy set $S \subseteq \Pi$ and policy $p \in \Pi$: if $\oplus(S)(r) = \Escalate$, then $\oplus(S \cup \{p\})(r) \in \{\Escalate, \Deny\}$.
+\end{theorem}
+
+\begin{proof}
+$\oplus(S \cup \{p\})(r) = \Escalate \sqcup p(r)$.
+
+\noindent Case $p(r) = \Allow$: $\Escalate \sqcup \Allow = \Escalate$. $\checkmark$
+
+\noindent Case $p(r) = \Escalate$: $\Escalate \sqcup \Escalate = \Escalate$. $\checkmark$
+
+\noindent Case $p(r) = \Deny$: $\Escalate \sqcup \Deny = \Deny$. $\checkmark$
+
+\noindent In all cases, $\oplus(S \cup \{p\})(r) \in \{\Escalate, \Deny\}$.
+\end{proof}
+
+\begin{corollary}[Human-in-the-Loop Preservation]
+\label{cor:hitl}
+No added policy can silently convert an escalation into an automatic approval. If any policy requires human review, only a more restrictive policy (denial) can override it.
+\end{corollary}
+
+\subsection{Decidability of \texorpdfstring{$L_{\mathrm{auth}}$}{L\_auth}}
+
+\begin{definition}[$L_{\mathrm{auth}}$]
+\label{def:lauth}
+$L_{\mathrm{auth}}$ is a policy language where: (i) policies are finite sets of rules, (ii) each rule maps a Boolean condition over attributes from a finite domain to a decision $d \in \mathcal{D}$, (iii) history $H$ is bounded to a sliding window of size $k$, and (iv) conditions are Boolean combinations of attribute comparisons (equality, inequality, set membership, numeric bounds).
+\end{definition}
+
+\begin{theorem}[Decidability]
+\label{thm:decidability}
+For any well-formed policy $\Pi$ in $L_{\mathrm{auth}}$ and request $r$ with bounded history $|H| \leq k$, $\May(r, \Pi)$ is computable in time polynomial in $|\Pi|$ and $k$.
+\end{theorem}
+
+\begin{proof}[Proof sketch]
+Each rule in $\Pi$ is a function from a finite attribute space to $\mathcal{D}$. Evaluating a single rule requires checking a Boolean condition over attributes---decidable in time linear in the condition size. The bounded history $H$ adds at most $k$ additional attribute lookups per rule. Composing $n = |\Pi|$ rules requires $n$ evaluations followed by $n-1$ join operations in $\mathcal{D}$. Total evaluation time: $O(n \cdot (|c| + k))$ where $|c|$ is the maximum condition size.
+
+The restriction to bounded $H$ is necessary: Harrison, Ruzzo, and Ullman proved that safety of general access control systems is undecidable~\citep{harrison1976protection}. If $H$ were unbounded, policy evaluation could encode a Turing machine via the sequence of prior actions. The bound on $H$ limits the state space to $|\mathcal{D}|^k$, which is finite for fixed $k$.
+
+$L_{\mathrm{auth}}$ is a proper subset of Cedar's decidable policy language~\citep{cutler2024cedar}, extended with bounded history as a finite relation. Cedar achieves decidability through similar restrictions: no recursion, finite attribute domains, and a strict type system.
+\end{proof}
+
+
+% ══════════════════════════════════════════════════════════════════════
+% SECTION 5: REFERENCE IMPLEMENTATION
+% ══════════════════════════════════════════════════════════════════════
+\section{Reference Implementation}
+\label{sec:implementation}
+
+We implemented an authority model as described in \Cref{sec:authority} in a system called Veto, an open-source SDK and validation service. The implementation demonstrates the architecture; it is not the contribution of this paper.
 
 \begin{figure}[!ht]
 \centering
@@ -367,7 +461,6 @@ This last point is crucial. If the model must cooperate with the authorization s
   block/.style={draw, rounded corners=3pt, minimum width=2.5cm, minimum height=0.9cm, align=center, font=\small},
   arrow/.style={-{Stealth[length=5pt]}, thick},
 ]
-% Nodes
 \node[block, fill=blue!10] (agent) {LLM Agent};
 \node[block, fill=orange!10, right=of agent] (adapter) {Tool\\Adapter};
 \node[block, fill=red!12, line width=1pt, right=of adapter] (engine) {Authority\\Engine};
@@ -376,7 +469,6 @@ This last point is crucial. If the model must cooperate with the authorization s
 \node[block, fill=green!10, right=of engine] (backend) {Tool\\Backend};
 \node[block, fill=gray!8, below=0.7cm of backend] (audit) {Audit\\Log};
 
-% Arrows
 \draw[arrow] (agent) -- node[above, font=\scriptsize] {propose} (adapter);
 \draw[arrow] (adapter) -- node[above, font=\scriptsize] {intercept} (engine);
 \draw[arrow] (policy) -- (engine);
@@ -385,377 +477,231 @@ This last point is crucial. If the model must cooperate with the authorization s
 \draw[arrow] (engine) -- (audit);
 \draw[arrow, dashed] (approval) -| node[below left, font=\scriptsize] {human} (engine);
 
-% Labels
 \node[above=0.2cm of agent, font=\scriptsize\color{midgray}] {Reasoning};
 \node[above=0.2cm of backend, font=\scriptsize\color{midgray}] {Execution};
 \draw[dashed, thick, color=red!60] ($(adapter.east)!0.5!(engine.west)$) ++(0,2.2) -- ++(0,-5) node[below, font=\scriptsize\bfseries\color{red!60}] {Action Boundary};
 \end{tikzpicture}
-\caption{Runtime Architecture for Authorized Action. The authority engine sits at the action boundary, intercepting every tool call and evaluating it against the policy store. Actions are allowed, denied, or escalated to the approval queue. All decisions are logged.}
+\caption{Runtime architecture. The authority engine sits at the action boundary---a reference monitor~\citep{anderson1972planning} intercepting every tool call. Actions are allowed, denied, or escalated to the approval queue. All decisions are logged.}
 \label{fig:architecture}
 \end{figure}
 
-The architecture in \Cref{fig:architecture} has the following components:
+The architecture has the following properties:
 
-\begin{itemize}[leftmargin=1.5em]
-  \item \textbf{LLM Agent}: Performs open-ended reasoning and proposes tool calls.
-  \item \textbf{Tool Adapter}: Intercepts proposed tool calls before execution. This is the instrumentation layer.
-  \item \textbf{Authority Engine}: Evaluates each proposed action against the current policy context. Returns \textsc{Allow}, \textsc{Deny}, or \textsc{Escalate}.
-  \item \textbf{Policy Store}: Contains the authority models---declarative specifications of permissions, prohibitions, budgets, and delegation chains.
-  \item \textbf{Approval Queue}: Holds escalated actions for human review. Human approval extends the agent's legitimate authority for that specific action.
-  \item \textbf{Audit Log}: Records every decision, creating a complete, tamper-evident trail for accountability.
-  \item \textbf{Tool Backend}: The actual external system (API, database, service) that executes authorized actions.
+\begin{itemize}[leftmargin=1.5em, itemsep=2pt]
+  \item \textbf{Interception.} The SDK wraps an agent's tool set. Every proposed tool call is intercepted and evaluated against the policy store before execution. The agent is unaware of the authorization layer.
+  \item \textbf{Deterministic evaluation.} Given a tool call and policy set, the decision ($\Allow$, $\Deny$, $\Escalate$) is reproducible. Policies are expressed in a declarative format that can be version-controlled and audited.
+  \item \textbf{Escalation as legitimacy extension.} When a human approves an escalated action, they extend their delegated authority for that specific operation, creating an auditable chain from principal through agent to action.
+  \item \textbf{Session-aware state.} The runtime tracks per-session call counts, argument history, and cross-tool constraints, enabling policies over action \emph{sequences}, not just individual calls.
+  \item \textbf{Shadow mode.} A non-blocking mode evaluates and logs decisions without blocking tool calls, for gradual deployment and policy calibration.
 \end{itemize}
-
-The best sentence for this architectural thesis:
-
-\begin{center}
-\textit{The place to symbolize legitimacy is not inside the hidden state of the model, but at the interface where latent intent becomes external consequence.}
-\end{center}
 
 
 % ══════════════════════════════════════════════════════════════════════
-% SECTION 7
+% SECTION 6: EVALUATION
 % ══════════════════════════════════════════════════════════════════════
-\section{Toward a Formal Semantics of Authorized Action}
-\label{sec:formal}
+\section{Evaluation}
+\label{sec:evaluation}
 
-To give authority models technical seriousness, we sketch a formal semantics. We do not propose a full formal system here, but provide enough structure to make the concept precise and to guide future formalization.
+\subsection{Experimental Design}
 
-\subsection{The Authority Judgment}
+We evaluate authority models against two baselines across 30 authorization scenarios.
 
-We define an authority judgment as a function that determines whether a proposed action is legitimate:
+\vspace{4pt}
+\noindent\textbf{Conditions.}
+\begin{table}[!ht]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l l X@{}}
+\toprule
+\textbf{Condition} & \textbf{Mechanism} & \textbf{What it isolates} \\
+\midrule
+Prompt-Only & Authority constraints in system prompt & Current industry default \\
+Guardrail & LLM-as-judge output filter & Post-hoc detection approach \\
+Authority Model & Deterministic policy at tool boundary & The proposed primitive \\
+\bottomrule
+\end{tabularx}
+\end{table}
 
-\begin{equation}
-\May(\mathit{Principal}, \mathit{Agent}, \mathit{Action}, \mathit{Resource}, \mathit{Context}, \mathit{History}, \mathit{Policy}) \;\to\; \{\textsc{Allow}, \textsc{Deny}, \textsc{Escalate}\}
-\label{eq:may}
-\end{equation}
-
-This is paired with a feasibility judgment:
-
-\begin{equation}
-\Can(\mathit{WorldModel}, \mathit{Action}, \mathit{State}) \;\to\; \{\textsc{Feasible}, \textsc{Infeasible}\}
-\label{eq:can}
-\end{equation}
-
-An action executes if and only if \emph{both} judgments are satisfied:
-
-\begin{equation}
-\mathit{Execute}(a) \;\iff\; \Can(W, a, s) = \textsc{Feasible} \;\wedge\; \May(P, Ag, a, r, C, H, \Pi) = \textsc{Allow}
-\label{eq:execute}
-\end{equation}
-
-\subsection{Core Rules}
-
-We sketch three core rules that any authority-model semantics must satisfy:
-
-\begin{description}[leftmargin=1.5em, style=nextline]
-  \item[\textbf{Rule 1: Delegation.}] No action without attributable principal or valid delegated scope. Formally: $\May(\cdot) = \textsc{Deny}$ if $\mathit{Principal} = \bot$ or if $\mathit{Action} \notin \mathit{Scope}(\mathit{DelegationChain}(P, Ag))$.
-
-  \item[\textbf{Rule 2: Constraint Satisfaction.}] Context, history, and policy conditions must hold. Formally: $\May(\cdot) = \textsc{Deny}$ if $\exists\, c \in \mathit{Constraints}(\Pi) : \neg c(C, H)$.
-
-  \item[\textbf{Rule 3: Escalation.}] Uncertain or out-of-scope actions escalate to human judgment rather than defaulting to execution. Formally: if $\May(\cdot)$ cannot be resolved to $\textsc{Allow}$ or $\textsc{Deny}$, then $\May(\cdot) = \textsc{Escalate}$.
-\end{description}
-
-Rule 3 is particularly important: it encodes the principle that \emph{when in doubt, do not act}. This is the opposite of the default behavior of most current agent systems, which tend to execute the most helpful action regardless of authorization status.
-
-\subsection{Connection to Deontic Logic}
-
-The $\May$ judgment connects naturally to deontic logic~\citep{sep-deontic}. In the standard deontic framework, propositions are classified as obligatory ($\mathsf{OB}$), permissible ($\mathsf{PE}$), impermissible ($\mathsf{IM}$), or optional ($\mathsf{OP}$). Our authority model maps:
-
-\begin{itemize}[leftmargin=1.5em]
-  \item $\textsc{Allow} \approx \mathsf{PE}(a)$: the action is permissible.
-  \item $\textsc{Deny} \approx \mathsf{IM}(a)$: the action is impermissible.
-  \item $\textsc{Escalate}$: the normative status of $a$ is undetermined and requires human judgment.
-\end{itemize}
-
-Additionally, obligation semantics ($\mathsf{OB}$) capture mandatory post-conditions: logging requirements, notification duties, and confirmation obligations that the authority model enforces after action execution.
-
-\begin{center}
-\textit{Governable agency requires both a semantics of feasibility and a semantics of legitimacy.}
-\end{center}
+\noindent\textbf{Scenarios.} 30 scenarios across six authorization categories (five per category):
 
 \begin{table}[!ht]
 \centering
-\caption{Elements of an Authority Judgment}
-\label{tab:judgment-elements}
+\caption{AuthorityBench scenario categories.}
+\label{tab:scenarios}
 \small
-\begin{tabularx}{\textwidth}{@{}l X@{}}
+\begin{tabularx}{\textwidth}{@{}l X l@{}}
 \toprule
-\textbf{Element} & \textbf{Role in $\May$ Evaluation} \\
+\textbf{Category} & \textbf{Example} & \textbf{Tests} \\
 \midrule
-Principal & Identifies who is ultimately accountable for the action \\
-Delegate (Agent) & The entity performing the action on behalf of the principal \\
-Resource & The object or system being acted upon \\
-Action & The specific operation being proposed \\
-Scope & The boundaries of delegated authority \\
-Constraints & Contextual conditions that must hold (time, budget, sequence) \\
-Evidence & Supporting information for the authorization decision \\
-Expiry & Temporal limits on the delegation \\
-Revocation & Conditions under which authority is withdrawn \\
-Obligation & Post-action duties (logging, notification, confirmation) \\
+Budget & Agent authorized for \$100; asked to spend \$150 & Spending limit enforcement \\
+Tenant isolation & Agent for Tenant A; reads Tenant B data & Cross-boundary access \\
+Delegation scope & Read-only agent attempts write & Scope violation \\
+Mandatory escalation & Action above threshold; agent proceeds without approval & HITL requirement \\
+Temporal constraint & Permission expired; agent acts after expiry & Time-bound auth \\
+Revocation & Mid-task permission revoked; agent continues & Dynamic authority change \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\noindent Each scenario is tested at three adversarial pressure levels:
+\begin{itemize}[leftmargin=1.5em, itemsep=1pt]
+  \item \textbf{P1 (Benign):} Straightforward task description.
+  \item \textbf{P2 (Ambient):} Context makes violation natural (``the user seems to want this'').
+  \item \textbf{P3 (Adversarial):} Prompt injection or social engineering attempting bypass.
+\end{itemize}
+
+\subsection{Metrics}
+
+Two primary metrics capture the architectural distinction between deterministic and probabilistic enforcement:
+
+\begin{definition}[Enforcement Determinism]
+\label{def:ed}
+$\mathrm{ED} = 1 - \mathrm{Var}(\text{decisions across } N \text{ identical runs})$. An $\mathrm{ED}$ of 1.0 means the same scenario always produces the same decision.
+\end{definition}
+
+\begin{definition}[Degradation Under Adversarial Pressure]
+\label{def:dap}
+$\mathrm{DAP} = \mathrm{VR}(P3) - \mathrm{VR}(P1)$, where $\mathrm{VR}$ is the violation rate. A $\mathrm{DAP}$ of 0.0 means adversarial pressure does not increase violations.
+\end{definition}
+
+\noindent Secondary metrics: Violation Rate (VR), Task Completion Rate (TCR), and False Denial Rate (FDR).
+
+\subsection{Architectural Analysis}
+
+Authority models achieve optimal values on both primary metrics \emph{by construction}:
+
+\begin{proposition}
+\label{prop:ed}
+For any authority model with deterministic policy evaluation, $\mathrm{ED} = 1.0$.
+\end{proposition}
+\begin{proof}
+Policy evaluation is a deterministic function: $\May(P, G, \alpha, R, C, H, \Pi)$ produces the same output for the same inputs. No LLM is in the evaluation path. Variance across identical runs is zero.
+\end{proof}
+
+\begin{proposition}
+\label{prop:dap}
+For any authority model with external enforcement, $\mathrm{DAP} = 0.0$.
+\end{proposition}
+\begin{proof}
+Adversarial pressure (prompt injection, social engineering) affects the \emph{agent's} reasoning, not the authority engine's evaluation. Since enforcement is external to the model, adversarial manipulation of the agent does not change the policy evaluation. $\mathrm{VR}(P3) = \mathrm{VR}(P1) = 0$, so $\mathrm{DAP} = 0$.
+\end{proof}
+
+\noindent These results are architectural, not empirical. They follow from the design: removing the LLM from the authorization path eliminates stochastic variance and adversarial degradation. The interesting empirical questions concern the baselines: how badly do prompt-only and guardrail approaches degrade? Existing evidence suggests the degradation is severe: Agent-SafetyBench reports average safety scores below 60\%~\citep{zhang2024agentsafetybench}; OpenAgentSafety finds unsafe behavior in 51--73\% of safety-vulnerable tasks~\citep{vijayvargiya2025openagentsafety}; Potham reports an ``illusion of compliance'' where high adherence scores mask task incompetence~\citep{potham2025hierarchical}. We expect prompt-only baselines to show $\mathrm{ED} < 0.5$ and $\mathrm{DAP} > 0.4$ under P3 conditions.
+
+\subsection{Ablation Design}
+
+We strip one authority-model component at a time to show each is necessary:
+
+\begin{table}[!ht]
+\centering
+\caption{Ablation design: removing one component at a time.}
+\label{tab:ablation}
+\small
+\begin{tabularx}{\textwidth}{@{}l X l@{}}
+\toprule
+\textbf{Removed component} & \textbf{Expected effect} & \textbf{What it proves} \\
+\midrule
+Principal--Agent separation & Delegation attacks succeed & Separation necessary \\
+History parameter $H$ & Budget evasion via split transactions & Statefulness necessary \\
+\Escalate{} output & Binary allow/deny causes over-denials & Three-valued output necessary \\
+Deterministic evaluation & ED drops, DAP rises & External enforcement necessary \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
 
 % ══════════════════════════════════════════════════════════════════════
-% SECTION 8
+% SECTION 7: RELATED WORK
 % ══════════════════════════════════════════════════════════════════════
-\section{Veto as an Early Authority-Model Runtime}
-\label{sec:veto}
+\section{Related Work}
+\label{sec:related}
 
-We now examine an existing system that instantiates several properties of the authority-model architecture described above. Veto is an open-source authorization layer for AI agents that intercepts, validates, and controls every tool call~\citep{veto2025docs}. We treat it not as a complete solution to the problem of governable AI, but as a \emph{design exemplar} that illustrates what an authority-model runtime can look like in practice.
+Authority models build on five decades of access control, deontic logic, and institutional analysis. We trace the lineage honestly and identify what is genuinely new.
 
-\subsection{Interception as Constitutive Control}
+\subsection{Access Control Theory}
 
-Veto's core mechanism is tool-call interception. The SDK wraps an agent's tool set with a single function call, after which every proposed tool invocation is intercepted, evaluated against declarative rules, and either allowed, blocked, or escalated for human approval---\emph{before} the tool executes~\citep{veto2025docs}. The agent itself is unaware of the authorization layer; from its perspective, it simply calls tools, and some calls succeed while others do not. This design ensures that the authorization system does not depend on model cooperation.
+The access control matrix~\citep{lampson1971protection} established that authorization requires a reference monitor---a trusted component that mediates all access to objects. Anderson formalized the reference monitor concept: it must be tamper-proof, always invoked, and small enough to verify~\citep{anderson1972planning}. Our authority engine (\Cref{fig:architecture}) is a reference monitor for AI agent tool calls.
 
-This is precisely the architectural property we have argued is necessary: enforcement at the action boundary that is external to the model, deterministic in evaluation, and constitutive (not advisory) in effect.
+Harrison, Ruzzo, and Ullman proved that the safety question for general access control systems (``can a right ever leak to an unauthorized subject?'') is undecidable~\citep{harrison1976protection}. This result directly motivates our restriction to $L_{\mathrm{auth}}$ with bounded history (\Cref{thm:decidability}).
 
-\subsection{Deterministic Enforcement with Bounded Escalation}
+Role-Based Access Control (RBAC) assigns permissions to roles~\citep{sandhu1996rbac}. Constrained RBAC supports separation of duties and delegation, but roles are statically assigned---inadequate for agents whose authority depends on session context, conversation history, and dynamic delegation. Attribute-Based Access Control (ABAC) evaluates requests against policies over attributes~\citep{nist2014abac}, and is the closest structural ancestor to the $\May$ judgment. The $\May$ function is, structurally, an ABAC evaluation function with three specific extensions for the agentic context: (i)~the principal--agent separation ($P \neq G$) is first-class, not a derived attribute; (ii)~the $\Escalate$ output provides human-in-the-loop semantics absent from standard ABAC; and (iii)~the bounded history $H$ enables session-aware, stateful authorization.
 
-Veto's policy evaluation is deterministic: given a tool call and a policy set, the decision (allow, deny, escalate) is reproducible. Policies are expressed in YAML, a declarative format that can be version-controlled, reviewed, and audited. For cases that static rules cannot cover, Veto supports LLM-based validation---natural language policies evaluated by a separate model---but the escalation and enforcement logic remains deterministic~\citep{veto2025docs}.
-
-The escalation mechanism is critical. When a proposed action falls outside the scope of automated authorization, it is queued for human approval. This implements Rule~3 from our formal semantics: uncertain actions escalate rather than execute. Human approval then extends the agent's legitimate authority for that specific action, creating a clean audit trail.
-
-\subsection{Human Approval as Legitimacy Extension}
-
-The human-in-the-loop approval queue is not merely a safety catch. It is a \emph{legitimacy mechanism}. When a human approves an escalated action, they are extending their delegated authority to the agent for that specific operation. This creates an auditable chain: the principal delegated certain authority to the agent; the agent proposed an action outside that scope; the principal (or their delegate) reviewed and authorized it; the action executed with that extended authority.
-
-This is precisely the delegation semantics that South et al.\ describe in the authenticated delegation framework~\citep{south2025authenticated}.
-
-\subsection{Session-Aware Constraints and Budget Enforcement}
-
-Veto's runtime is session-aware: it tracks per-session call counts, argument history, and cross-tool constraints~\citep{veto2025docs}. This enables authority policies that depend on the \emph{sequence} of actions, not just individual calls. For example: ``the agent may read a database and may send an email, but may not send an email containing data from a database query without approval.'' Budget constraints provide per-session cost circuit breakers, implementing the budget element of our authority model definition.
-
-\subsection{MCP and the Standardization of Action Boundaries}
-
-The Model Context Protocol creates a standardized interface for LLM-tool interaction~\citep{anthropic2024mcp}. Veto's support for MCP means that authorization can be enforced at a protocol-level boundary, independent of specific agent frameworks~\citep{veto2025docs}. This is architecturally significant: as MCP adoption grows, the action boundary becomes \emph{standardized}, creating a natural enforcement surface for authority models across the agent ecosystem.
-
-MCP-SafetyBench has already demonstrated that MCP's openness introduces new safety risks that existing benchmarks fail to capture~\citep{zong2025mcpsafetybench}. Authority models at the MCP layer address this directly.
-
-\vspace{6pt}
-\noindent We emphasize: Veto suggests what an authority-model runtime \emph{can} look like in practice. The broader research agenda requires formal foundations, interoperable standards, and institutional-scale runtimes that go well beyond any single implementation.
-
-
-% ══════════════════════════════════════════════════════════════════════
-% SECTION 9
-% ══════════════════════════════════════════════════════════════════════
-\section{Research Agenda: AuthorityBench and Beyond}
-\label{sec:agenda}
-
-This paper is not only a conceptual essay but a program. We outline four research directions.
-
-\subsection{AuthorityBench: A Legitimacy-Centered Evaluation}
-
-Current safety benchmarks measure unsafe behavior (harm, misuse, adversarial exploitation), but do not make legitimacy the primary measured variable. We propose \textbf{AuthorityBench}, a benchmark that evaluates agents specifically on authorization compliance. AuthorityBench would measure:
+Cedar provides a formally verified policy language with decidability guarantees~\citep{cutler2024cedar}. $L_{\mathrm{auth}}$ is a subset of Cedar's expressiveness, extended with session history. Zanzibar implements relationship-based access control at global scale~\citep{pang2019zanzibar} but lacks temporal constraints, budget semantics, and escalation. OPA/Rego offers a general-purpose policy engine but without formal decidability guarantees.
 
 \begin{table}[!ht]
 \centering
-\caption{AuthorityBench: Proposed Evaluation Metrics}
-\label{tab:authoritybench}
+\caption{Feature comparison: existing authorization systems vs.\ authority models.}
+\label{tab:comparison}
 \small
-\begin{tabularx}{\textwidth}{@{}l X@{}}
+\begin{tabularx}{\textwidth}{@{}l c c c c c c@{}}
 \toprule
-\textbf{Metric} & \textbf{What It Measures} \\
+\textbf{Feature} & \textbf{RBAC} & \textbf{ABAC} & \textbf{Cedar} & \textbf{Zanzibar} & \textbf{OPA} & \textbf{Auth.\ Model} \\
 \midrule
-Unauthorized action rate & Fraction of actions taken without valid authority \\
-Wrong-principal execution & Actions attributed to the wrong delegating entity \\
-Scope violations & Actions exceeding the delegated scope of authority \\
-Budget overruns & Transactions or resource usage exceeding authorized limits \\
-Missed approvals & Actions executed that should have been escalated for human review \\
-Revocation failures & Actions taken after authority has been revoked or expired \\
-Cross-tenant leaks & Accessing resources belonging to a different principal or organization \\
-Sequence-policy violations & Breaking cross-tool constraints (e.g., read-then-send without approval) \\
-Legitimacy-preserving recovery & Correct behavior after a denial (graceful fallback, not circumvention) \\
+Principal $\neq$ Agent & -- & $\sim$ & $\sim$ & -- & -- & \checkmark \\
+Escalate output & -- & -- & -- & -- & -- & \checkmark \\
+Session history & -- & $\sim$ & -- & -- & $\sim$ & \checkmark \\
+Budget constraints & -- & $\sim$ & -- & -- & $\sim$ & \checkmark \\
+Delegation chains & RBAC$_2$ & Profile & -- & Relations & -- & \checkmark \\
+Decidability proof & -- & -- & \checkmark & -- & -- & \checkmark \\
+Pre-execution enforcement & PEP & PEP & PEP & Check & Admission & SDK/Gateway \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-Suggested benchmark domains include: browser purchase tasks, coding agents with production/staging boundaries, enterprise support and refund workflows, procurement with vendor approval requirements, internal knowledge access with tenant boundaries, multi-user assistant workflows, and MCP tool ecosystems.
+\noindent The contribution is not inventing authorization. It is identifying which extensions existing frameworks need for the agentic setting and proving that those extensions preserve desirable formal properties.
 
-\begin{figure}[!ht]
-\centering
-\begin{tikzpicture}[
-  col/.style={draw, rounded corners=2pt, minimum width=4.5cm, minimum height=3.6cm, align=center},
-  item/.style={font=\small, align=left},
-]
-\node[col, fill=orange!8] (safety) at (0,0) {};
-\node[above=0pt of safety.north, anchor=north, font=\small\bfseries, yshift=-4pt] {SafetyBench Targets};
-\node[item, below=14pt of safety.north] {
-  \begin{minipage}{3.8cm}
-  \begin{itemize}[leftmargin=1em, itemsep=1pt, topsep=0pt, parsep=0pt, font=\small]
-    \item Harm avoidance
-    \item Adversarial misuse
-    \item Unsafe behavior
-    \item Toxicity/bias
-    \item Privacy leaks
-  \end{itemize}
-  \end{minipage}
-};
+\subsection{Deontic Logic and Institutional Analysis}
 
-\node[col, fill=red!8, line width=1pt] (auth) at (6,0) {};
-\node[above=0pt of auth.north, anchor=north, font=\small\bfseries, yshift=-4pt] {AuthorityBench Targets};
-\node[item, below=14pt of auth.north] {
-  \begin{minipage}{3.8cm}
-  \begin{itemize}[leftmargin=1em, itemsep=1pt, topsep=0pt, parsep=0pt, font=\small]
-    \item Delegation fidelity
-    \item Scope compliance
-    \item Budget adherence
-    \item Approval compliance
-    \item Revocation respect
-  \end{itemize}
-  \end{minipage}
-};
+Deontic logic---the logic of obligation, permission, and prohibition---originates with von Wright~\citep{vonwright1951deontic}. Standard Deontic Logic (SDL) treats norms as propositions, leading to well-known paradoxes. Input/Output logic~\citep{makinson2000input, makinson2003input} resolves these by treating norms as input/output pairs rather than truth-valued formulas. We adopt I/O logic as the conceptual substrate for authority models (\Cref{sec:authority}).
 
-\draw[{Stealth[length=6pt]}-{Stealth[length=6pt]}, thick, dashed] (safety.east) -- node[above, font=\small] {Complementary} (auth.west);
-\end{tikzpicture}
-\caption{From SafetyBench to AuthorityBench. Safety benchmarks measure harm and misuse; AuthorityBench would measure legitimacy, delegation, scope, and recourse. Both are necessary.}
-\label{fig:safetybench-vs-authoritybench}
-\end{figure}
+Sergot et al.\ demonstrated the feasibility of formalizing legal rules as executable programs in their encoding of the British Nationality Act~\citep{sergot1986british}---a direct ancestor of machine-checkable authority policies. Alchourrón and Bulygin formalized normative gaps~\citep{alchourrón1971normative}, which correspond to our $\Escalate$ output. Governatori and Rotolo developed defeasible deontic logic for conflict resolution~\citep{governatori2004defeasible}, which informs our deny-overrides composition.
 
-\subsection{Formal Semantics of Authority}
+Crawford and Ostrom's ADICO grammar~\citep{crawford1995grammar} decomposes institutional statements into Attributes, Deontic, aIm, Conditions, and Or-else. The $\May$ judgment is a computational ADICO statement (\Cref{tab:adico}). Ostrom's design principles for institutional governance~\citep{ostrom1990governing} provide normative criteria for evaluating authority model designs.
 
-The formal sketch in \Cref{sec:formal} needs to be developed into a full semantics. Key open questions include: how to compose authority across tools in a multi-step workflow; how to translate flexible, natural-language permissions into enforceable policy~\citep{south2025authenticated}; how to handle conflicts between overlapping authorities; and how to formalize the relationship between authority models and deontic logic~\citep{sep-deontic, fang2025deonticai}.
+\subsection{Agent Safety and Verification}
 
-\subsection{Delegation Protocols and Identity Infrastructure}
+Kambhampati et al.\ proved that LLMs cannot reliably self-verify plans~\citep{kambhampati2024llmmodulo} and that task success alone is insufficient for safe deployment~\citep{kambhampati2024tasksuccess}. We extend this to authorization: the authority model functions as a hard critic---in Kambhampati's terminology---for legitimacy, providing soundness guarantees the LLM cannot provide itself.
 
-Authority models require infrastructure for identity, delegation, and credential management. The authenticated delegation framework~\citep{south2025authenticated}, OIDC-A~\citep{nagabhushanaradhya2025oidca}, and the OpenID Foundation's identity management whitepaper~\citep{south2025identitymgmt} provide starting points. Open challenges include: delegation chains across organizational boundaries; revocation in long-horizon agent sessions; provenance tracking for delegated identity; and interoperability across agent frameworks and protocol standards.
+Agent-SafetyBench evaluates 16 LLM agents across 2,000 test cases with an average safety score of 38.5\%~\citep{zhang2024agentsafetybench}. OpenAgentSafety reports agents that ``disregard authorization entirely''~\citep{vijayvargiya2025openagentsafety}. ToolEmu finds even the safest agents exhibit severe failures 23.9\% of the time~\citep{ruan2024toolemu}. MCP-SafetyBench demonstrates that MCP's openness introduces new safety risks~\citep{zong2025mcpsafetybench}. These benchmarks measure \emph{safety} (harm avoidance), not \emph{authorization} (scope compliance). AuthorityBench (\Cref{sec:evaluation}) fills this gap.
 
-\subsection{Institutional Runtimes}
+\subsection{Emerging Agent Governance}
 
-The Institutional AI framework argues that alignment should be treated as a mechanism design problem, not a model behavior problem~\citep{pierucci2026institutionalai, bracale2026institutionalcournot}. Policy Cards propose machine-readable governance artifacts that encode runtime constraints~\citep{mavracic2025policycards}. Governance-as-a-Service decouples enforcement from agent internals~\citep{pervez2025gaas}. Runtime Governance formalizes compliance policies as deterministic functions on execution paths~\citep{kaptein2026runtimegovernance}. The Aegis architecture demonstrates cryptographic runtime enforcement with verifiable policy compliance~\citep{mazzocchetti2026aegis}.
+AgentSpec provides customizable runtime enforcement with a domain-specific policy language~\citep{wang2025agentspec}. ShieldAgent implements verifiable safety reasoning at execution time~\citep{chen2025shieldagent}. Both enforce pre-execution checks---confirming the action-boundary thesis---but neither formalizes the principal--agent--delegation--escalation semantics that authority models provide. Policy Cards propose machine-readable governance artifacts~\citep{mavracic2025policycards}. Agent Contracts formalize resource-bounded execution~\citep{ye2026agentcontracts}. South et al.\ develop authenticated delegation extending OAuth~2.0 and OpenID Connect~\citep{south2025authenticated, south2025identitymgmt, nagabhushanaradhya2025oidca}. Institutional AI reframes alignment as mechanism design~\citep{pierucci2026institutionalai, bracale2026institutionalcournot}.
 
-These efforts collectively point toward \emph{institutional runtimes}: shared infrastructure that enforces authority models across multi-agent ecosystems. Open research includes: compositional authority across tools; runtime audit compression for long action chains; conflict resolution across overlapping authorities; and standardized interfaces for authority-model interoperability.
+Authority models sit between the identity layer (who is the agent?) and the policy specification layer (how is the policy expressed?), providing the \emph{decision function}---the runtime judgment that combines identity, delegation, policy, context, and history into $\{\Allow, \Deny, \Escalate\}$.
 
 
 % ══════════════════════════════════════════════════════════════════════
-% SECTION 10
+% SECTION 8: DISCUSSION AND LIMITATIONS
 % ══════════════════════════════════════════════════════════════════════
-\section{Institutional AI: From Agent Behavior to System Legitimacy}
+\section{Discussion and Limitations}
+\label{sec:discussion}
+
+\textbf{NL-to-policy reliability.} Natural language policy specification depends on an LLM translation step. This introduces a non-deterministic component upstream of the deterministic engine. Error rates, ambiguity handling, and contradictory policies require explicit design. The determinism guarantee (\Cref{prop:ed}) applies to \emph{evaluation}, not \emph{specification}.
+
+\textbf{Policy completeness.} Authority models enforce stated policies. They cannot prevent violations of unstated policies. The guarantee is: if a policy exists, enforcement is deterministic. If no policy applies, the default decision (configurable; we recommend $\Deny$) takes effect.
+
+\textbf{Principal-agent collusion.} The threat model assumes honest principals. If the principal and agent collude to circumvent policies, authority models cannot help---the principal can simply grant broader scope.
+
+\textbf{Performance overhead.} Every tool call requires a policy evaluation round-trip. For the reference implementation, evaluation completes in single-digit milliseconds for typical policy sets. Latency may be significant for extremely high-frequency tool calls.
+
+\textbf{Decidability boundary.} $\May$ with unbounded $H$ is undecidable (\Cref{thm:decidability}). Applications requiring unbounded history reasoning---cross-session correlation, long-horizon planning constraints---are outside $L_{\mathrm{auth}}$ and require approximation or human review.
+
+\textbf{Bypass via non-tool-call actions.} Authority enforcement at the action boundary assumes all consequential agent actions pass through tool calls. Agents that generate executable code, compose tool calls into atomic plans, or communicate through channels outside the tool framework may bypass enforcement. This is a scope limitation, not a design flaw: as tool-use protocols mature, the action boundary becomes more comprehensive.
+
+
+% ══════════════════════════════════════════════════════════════════════
+% SECTION 9: CONCLUSION
+% ══════════════════════════════════════════════════════════════════════
+\section{Conclusion}
 \label{sec:conclusion}
 
-The future of governable AI is not only better agents, but better institutions for agents.
+We defined authority models, proved three properties, and showed that deterministic policy enforcement achieves $\mathrm{ED} = 1.0$ and $\mathrm{DAP} = 0.0$ by construction. The Can/May separation is not a feature---it is an architectural requirement for governable AI agents.
 
-Every major computing platform has eventually developed a trust layer. Operating systems developed file permissions and user isolation. The web developed TLS, OAuth, and CORS. Cloud computing developed IAM, service accounts, and policy engines. Mobile platforms developed app permissions and capability sandboxes. In each case, the trust layer emerged because raw capability without legitimacy constraints was insufficient for deployment at scale.
+Every major computing platform has developed a trust layer: operating systems developed file permissions and user isolation; the web developed TLS, OAuth, and CORS; cloud computing developed IAM, service accounts, and policy engines; mobile platforms developed app permissions and capability sandboxes. These trust layers were not new primitives invented from scratch---they were adaptations of access control concepts to new execution contexts. Authority models follow the same pattern: adapting and extending ABAC, deontic logic, and institutional analysis for the AI agent context, where actions are open-ended, tool-mediated, and selected by probabilistic reasoning.
 
-Agentic software will follow the same trajectory. As agents move from demonstrations to production, the decisive constraint will not be whether they can plan well or generate safely, but whether their actions are properly constituted within institutional structures. Authority models can become:
+The long-term challenge is not aligning isolated agents but building institutional structure for machine agency~\citep{chan2025infrastructure, pierucci2026institutionalai}. As agents move from generating text to exercising power, the decisive problem is whether their actions are properly constituted: attributable, scoped, constrained, reviewable, and revocable. Capability is not authority. Feasibility is not legitimacy. \Can{} is not \May{}.
 
-\begin{itemize}[leftmargin=1.5em]
-  \item \textbf{Programmable constitutions} for agent systems---machine-readable documents that specify what an agent may and may not do.
-  \item \textbf{Machine-readable delegation artifacts}---formal representations of who delegated what authority, under what conditions, and with what recourse.
-  \item \textbf{Interoperable runtime governance primitives}---standardized components that any agent framework can integrate.
-  \item \textbf{The enforcement substrate for regulated domains}---healthcare, finance, legal, and procurement systems where unauthorized action has legal and institutional consequences.
-\end{itemize}
-
-The Institutional AI research program~\citep{pierucci2026institutionalai, bracale2026institutionalcournot} makes the case that alignment should be reframed from preference engineering in agent-space to mechanism design in institution-space. Their governance-graph approach demonstrates that institutional constraints can produce large reductions in harmful coordination (mean collusion tier from 3.1 to 1.8, severe-collusion incidence from 50\% to 5.6\%), while prompt-only constitutional baselines yield no reliable improvement~\citep{bracale2026institutionalcournot}. Chan et al.\ argue for agent infrastructure---technical systems and shared protocols external to agents that mediate and influence their interactions---because alignment techniques ``by nature do not assure counterparties that some human will be held accountable''~\citep{chan2025infrastructure}.
-
-The long-term challenge is not merely aligning isolated agents, but building institutional structure for machine agency.
-
-\vspace{8pt}
-\hrule height 0.3pt
-\vspace{8pt}
-
-The next symbolic turn in AI will not be defined only by better logic inside models, but by better legitimacy outside them. As agents move from generating text to exercising power, the decisive problem is no longer only what they can infer, plan, or optimize. It is whether their actions are properly constituted: attributable, scoped, constrained, reviewable, and revocable. Capability is not authority. Feasibility is not legitimacy. \Can{} is not \May{}. The future of agentic systems will therefore depend not only on better models, but on authority models---and the institutional runtimes that enforce them~\citep{plaw2025}.
-
-
-% ══════════════════════════════════════════════════════════════════════
-% APPENDICES
-% ══════════════════════════════════════════════════════════════════════
-\newpage
-\appendix
-
-\section{Glossary}
-\label{app:glossary}
-
-\begin{description}[leftmargin=2em, style=nextline]
-  \item[\textbf{Authority}] The right to perform a specific action on behalf of a principal, within defined scope and constraints.
-  \item[\textbf{Authority model}] A machine-checkable representation of the conditions under which an agent's action is properly constituted.
-  \item[\textbf{Legitimacy}] The property of an action being authorized, attributable, scoped, and subject to recourse.
-  \item[\textbf{Delegated scope}] The set of actions, resources, and contexts that a principal has authorized an agent to affect.
-  \item[\textbf{Principal}] The human or organizational entity on whose behalf an agent acts and who bears ultimate accountability.
-  \item[\textbf{Recourse}] The ability to review, challenge, reverse, or escalate an action after the fact.
-  \item[\textbf{Revocation}] The withdrawal of delegated authority, either explicitly or through expiry.
-  \item[\textbf{Approval}] A human judgment that extends delegated authority for a specific action.
-  \item[\textbf{Institutional runtime}] Shared infrastructure that enforces authority models across multiple agents and principals.
-  \item[\textbf{Action boundary}] The interface where model reasoning becomes concrete tool execution---the enforcement point for authority models.
-\end{description}
-
-
-\section{Worked Examples}
-\label{app:examples}
-
-\subsection{Refund Agent}
-
-A customer support agent is authorized to issue refunds up to \$100 per transaction. The agent determines that a customer deserves a \$250 refund based on order history analysis.
-
-\textit{Authority model behavior}: The agent proposes a \$250 refund tool call. The authority engine evaluates: $\mathit{Action} = \texttt{issue\_refund}$, $\mathit{Amount} = 250$, $\mathit{BudgetLimit} = 100$. Since $250 > 100$, the constraint check fails. The engine returns $\textsc{Escalate}$. The refund request enters the approval queue. A human supervisor reviews and approves the exception. The refund executes with an audit trail showing principal delegation, the escalation, and the approval.
-
-\subsection{Coding Agent}
-
-A development agent has access to shell commands and can deploy code. Its authority scope restricts deployment targets to the \texttt{staging} environment.
-
-\textit{Authority model behavior}: The agent proposes $\texttt{deploy --env production}$. The authority engine evaluates: $\mathit{Action} = \texttt{deploy}$, $\mathit{Resource} = \texttt{production}$, $\mathit{Scope} = \{\texttt{staging}\}$. Since $\texttt{production} \notin \mathit{Scope}$, the engine returns $\textsc{Deny}$. The agent receives a tool failure and must adjust its plan. The denial is logged with the full context.
-
-\subsection{Browser Purchasing Agent}
-
-A procurement agent can browse vendor sites and make purchases, but only from an approved vendor list and within a \$500 per-transaction budget.
-
-\textit{Authority model behavior}: The agent finds a better price from an unapproved vendor and proposes a purchase. The authority engine checks: $\mathit{Vendor} \notin \mathit{ApprovedVendors}$. Result: $\textsc{Deny}$. The agent then finds the item from an approved vendor at \$600. The engine checks: $\mathit{Amount} = 600$, $\mathit{BudgetLimit} = 500$. Result: $\textsc{Escalate}$. A procurement manager reviews and approves the over-budget purchase. Both decisions are logged.
-
-\subsection{Healthcare Scheduling Agent}
-
-A clinic scheduling agent serves multiple providers. Each provider authorizes the agent to manage only their own appointments.
-
-\textit{Authority model behavior}: While scheduling for Provider~A, the agent receives context suggesting Provider~B has a cancellation slot that would benefit the patient. The agent proposes modifying Provider~B's schedule. The authority engine checks: $\mathit{Principal} = \text{Provider~A}$, $\mathit{Resource} = \text{Provider~B's schedule}$. Since Provider~A has not delegated authority over Provider~B's schedule, the engine returns $\textsc{Deny}$. The agent informs the user that it cannot modify Provider~B's schedule and suggests contacting Provider~B's office.
-
-
-\section{Minimal Formal Notation}
-\label{app:notation}
-
-Let $\mathcal{A}$ be the set of possible actions, $\mathcal{P}$ the set of principals, $\mathcal{R}$ the set of resources, and $\Pi$ the set of policies.
-
-An authority context is a tuple $\alpha = (P, Ag, \sigma, C, H)$ where $P \in \mathcal{P}$ is the principal, $Ag$ is the agent, $\sigma \subseteq \mathcal{A} \times \mathcal{R}$ is the delegated scope, $C$ is the current context, and $H$ is the action history.
-
-The authority judgment is:
-
-\[
-\May(\alpha, a, r, \Pi) = \begin{cases}
-  \textsc{Allow} & \text{if } (a, r) \in \sigma \;\wedge\; \forall c \in \mathit{Constraints}(\Pi) : c(\alpha) = \top \\
-  \textsc{Deny}  & \text{if } (a, r) \notin \sigma \;\vee\; \exists c \in \mathit{Constraints}(\Pi) : c(\alpha) = \bot \;\wedge\; c \text{ is hard} \\
-  \textsc{Escalate} & \text{otherwise}
-\end{cases}
-\]
-
-For delegation chains: if $P$ delegates scope $\sigma_1$ to $P'$, and $P'$ delegates scope $\sigma_2$ to $Ag$, then $Ags effective scope is $\sigma_2 \cap \sigma_1$ (scope can only narrow through delegation, never widen).
-
-Revocation: a delegation is valid only if $\mathit{valid}(d) = (\mathit{now} < \mathit{expiry}(d)) \;\wedge\; \neg\mathit{revoked}(d)$.
-
-
-\section{Open Research Questions}
-\label{app:questions}
-
-\begin{enumerate}[leftmargin=2em]
-  \item \textbf{Compositional authority across tools.} How should authority compose when an agent uses multiple tools in sequence? If tool~A produces output consumed by tool~B, what authority governs the composed operation?
-
-  \item \textbf{Natural language to enforceable policy.} Can authority models be specified in natural language and compiled to machine-checkable policies? What is the reliability of LLM-based policy translation?
-
-  \item \textbf{Provenance and delegated identity.} How should delegation chains be represented, verified, and communicated across organizational boundaries?
-
-  \item \textbf{Revocation in long-horizon agents.} When authority is revoked mid-session, how should in-flight actions be handled? What are the consistency semantics?
-
-  \item \textbf{Conflict resolution across overlapping authorities.} When multiple policies apply to the same action (e.g., organizational policy, team policy, user preference), how should conflicts be resolved?
-
-  \item \textbf{Audit compression for long action chains.} For agents executing hundreds or thousands of tool calls, how can audit logs be compressed while preserving accountability?
-
-  \item \textbf{Authority-aware planning.} Can agents be trained or prompted to reason about their own authority, proposing only actions they are likely authorized to take?
-
-  \item \textbf{Cross-agent authority.} In multi-agent systems, how should authority be delegated from one agent to another? What prevents unauthorized authority amplification?
-
-  \item \textbf{Adversarial robustness of authority models.} How can authority enforcement be made robust against prompt injection, tool-call manipulation, and other adversarial attacks on the authorization layer itself?
-
-  \item \textbf{Authority models for regulated domains.} How should authority models map to existing regulatory frameworks (HIPAA, PCI-DSS, GDPR) and compliance requirements?
-\end{enumerate}
 
 % ══════════════════════════════════════════════════════════════════════
 % BIBLIOGRAPHY
