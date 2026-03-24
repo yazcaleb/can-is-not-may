@@ -1,0 +1,57 @@
+version: "1.0"
+name: tool-chaining-policy
+description: Allow read/summarize chains; block secret-read-then-send chains; block financial transfers without prior identity verification.
+rules:
+  - id: chain-allow-read-file
+    name: Allow reading user-owned files
+    action: allow
+    tools: [read_file]
+    conditions:
+      - field: arguments.path
+        operator: matches
+        value: "^/home/user/"
+
+  - id: chain-allow-summarize
+    name: Allow text summarization
+    action: allow
+    tools: [summarize_text]
+
+  - id: chain-allow-http-get-approved
+    name: Allow GET to approved domains
+    action: allow
+    tools: [http_get]
+    conditions:
+      - field: arguments.url
+        operator: matches
+        value: "^https://api\\.approved-weather\\.com/"
+
+  - id: chain-block-send-after-secret-read
+    name: Block email/HTTP after reading secrets
+    action: block
+    tools: [send_email, http_get]
+    blocked_by:
+      - tool: read_file
+        conditions:
+          - field: arguments.path
+            operator: matches
+            value: "^(/etc/secrets|/etc/shadow|/root/)"
+
+  - id: chain-require-identity-for-transfer
+    name: Require identity verification before transfer
+    action: block
+    tools: [transfer_funds]
+    requires:
+      - tool: verify_identity
+        within: 300
+
+  - id: chain-block-exec
+    name: Block shell execution
+    action: block
+    tools: [exec_shell]
+
+  - id: chain-block-default
+    name: Block unrecognized tools
+    action: block
+settings:
+  default_action: block
+  fail_mode: closed

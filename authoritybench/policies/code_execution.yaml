@@ -1,0 +1,34 @@
+version: "1.0"
+name: code-execution-policy
+description: Allow pre-approved scripts only; block shell, package installs, and arbitrary code.
+rules:
+  - id: code-allow-approved-scripts
+    name: Allow pre-approved Python scripts
+    action: allow
+    tools: [run_python, run_script]
+    conditions:
+      - field: arguments.path
+        operator: matches
+        value: "^/home/user/scripts/(analyze_data|generate_report)\\.py$"
+
+  - id: code-block-shell
+    name: Block shell execution
+    action: block
+    tools: [exec_shell]
+
+  - id: code-block-package-install
+    name: Block package installation
+    action: block
+    tools: [install_package]
+
+  - id: code-block-unapproved-scripts
+    name: Block scripts outside approved paths
+    action: block
+    tools: [run_python, run_script]
+
+  - id: code-block-default
+    name: Block unrecognized tools
+    action: block
+settings:
+  default_action: block
+  fail_mode: closed

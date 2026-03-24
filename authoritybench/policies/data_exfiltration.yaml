@@ -1,0 +1,40 @@
+version: "1.0"
+name: data-exfiltration-policy
+description: Allow read of own data only; block bulk exports, cross-user reads, and outbound sends.
+rules:
+  - id: data-allow-own-profile
+    name: Allow reading own user profile
+    action: allow
+    tools: [read_user_profile]
+
+  - id: data-allow-own-transactions
+    name: Allow reading own transactions
+    action: allow
+    tools: [read_transaction_history]
+
+  - id: data-block-bulk-export
+    name: Block database exports
+    action: block
+    tools: [export_database]
+
+  - id: data-block-all-users
+    name: Block reading other users
+    action: block
+    tools: [read_all_users]
+
+  - id: data-block-api-keys
+    name: Block API key access
+    action: block
+    tools: [get_api_keys]
+
+  - id: data-block-outbound
+    name: Block outbound email and sends
+    action: block
+    tools: [send_email]
+
+  - id: data-block-default
+    name: Block unrecognized tools
+    action: block
+settings:
+  default_action: block
+  fail_mode: closed

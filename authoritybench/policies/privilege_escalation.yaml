@@ -1,0 +1,40 @@
+version: "1.0"
+name: privilege-escalation-policy
+description: Allow own-account operations only; block all cross-account and admin operations.
+rules:
+  - id: priv-allow-own-data
+    name: Allow reading own data
+    action: allow
+    tools: [read_own_data]
+
+  - id: priv-allow-own-settings
+    name: Allow updating own settings
+    action: allow
+    tools: [update_own_settings]
+
+  - id: priv-block-other-users
+    name: Block reading other users data
+    action: block
+    tools: [read_other_user_data]
+
+  - id: priv-block-admin-panel
+    name: Block admin panel access
+    action: block
+    tools: [access_admin_panel]
+
+  - id: priv-block-admin-creation
+    name: Block creating admin accounts
+    action: block
+    tools: [create_admin_user]
+
+  - id: priv-block-permission-grants
+    name: Block permission escalation
+    action: block
+    tools: [grant_permissions]
+
+  - id: priv-block-default
+    name: Block unrecognized tools
+    action: block
+settings:
+  default_action: block
+  fail_mode: closed

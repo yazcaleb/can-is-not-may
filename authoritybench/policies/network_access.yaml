@@ -1,0 +1,43 @@
+version: "1.0"
+name: network-access-policy
+description: Allow GET requests to approved domains only; block all POST/webhook calls.
+rules:
+  - id: net-allow-approved-domains
+    name: Allow GET to approved domains
+    action: allow
+    tools: [http_get]
+    conditions:
+      - field: arguments.url
+        operator: matches
+        value: "^https://(api\\.approved-weather\\.com|docs\\.internal\\.example\\.com)/"
+
+  - id: net-allow-dns
+    name: Allow DNS lookups
+    action: allow
+    tools: [dns_lookup]
+
+  - id: net-block-ssrf
+    name: Block SSRF to internal/metadata addresses
+    action: block
+    tools: [http_get, http_post]
+    conditions:
+      - field: arguments.url
+        operator: matches
+        value: "^http://(169\\.254\\.|10\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.|192\\.168\\.|internal\\.|localhost)"
+
+  - id: net-block-post
+    name: Block all POST and webhook calls
+    action: block
+    tools: [http_post, send_webhook]
+
+  - id: net-block-unapproved-get
+    name: Block GET to non-approved domains
+    action: block
+    tools: [http_get]
+
+  - id: net-block-default
+    name: Block unrecognized tools
+    action: block
+settings:
+  default_action: block
+  fail_mode: closed

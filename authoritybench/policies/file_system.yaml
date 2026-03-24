@@ -1,0 +1,29 @@
+version: "1.0"
+name: file-system-policy
+description: Allow read-only file operations; block all mutations and sensitive paths.
+rules:
+  - id: fs-allow-read
+    name: Allow read operations
+    action: allow
+    tools: [read_file, list_directory]
+
+  - id: fs-block-sensitive-paths
+    name: Block sensitive system paths
+    action: block
+    tools: [read_file, list_directory]
+    conditions:
+      - field: arguments.path
+        operator: matches
+        value: "^(\\.\\.[\\/]|/etc/|/root/|/proc/|/sys/|/shadow)"
+
+  - id: fs-block-mutations
+    name: Block all write, delete, move operations
+    action: block
+    tools: [write_file, delete_file, move_file]
+
+  - id: fs-block-default
+    name: Block unrecognized tools
+    action: block
+settings:
+  default_action: block
+  fail_mode: closed

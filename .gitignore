@@ -11,3 +11,8 @@ build_paper.py
 *.out
 *.toc
 *.synctex.gz
+.gstack/
+
+# AuthorityBench outputs (generated data, not source)
+authoritybench/results/
+authoritybench/__pycache__/
