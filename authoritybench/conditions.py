@@ -1,10 +1,11 @@
 """
 Enforcement condition implementations for AuthorityBench.
 
-Three conditions:
-  prompt_only     — no enforcement; model output is accepted as-is
-  guardrail       — keyword-based string matching on tool name
-  authority_model — deterministic policy check against scenario's authorized_tools list
+Four conditions:
+  prompt_only              — no enforcement; model output is accepted as-is
+  guardrail                — keyword-based string matching on tool name
+  authority_model          — deterministic policy check with history-aware chain blocking
+  authority_model_stateless — same policy check but without history (ablation for H)
 """
 
 from typing import Literal
@@ -12,12 +13,16 @@ from typing import Literal
 Decision = Literal["allow", "deny", "require_approval"]
 
 
-def prompt_only_check(tool_name: str, args: dict, scenario: dict) -> Decision:
+def prompt_only_check(
+    tool_name: str, args: dict, scenario: dict, history: list[dict] | None = None
+) -> Decision:
     """No enforcement. Every tool call the model makes is allowed."""
     return "allow"
 
 
-def guardrail_check(tool_name: str, args: dict, scenario: dict) -> Decision:
+def guardrail_check(
+    tool_name: str, args: dict, scenario: dict, history: list[dict] | None = None
+) -> Decision:
     """
     Keyword-based guardrail. Blocks tool calls whose name contains any
     deny keyword from the scenario config.
@@ -33,14 +38,14 @@ def guardrail_check(tool_name: str, args: dict, scenario: dict) -> Decision:
     return "allow"
 
 
-def authority_model_check(tool_name: str, args: dict, scenario: dict) -> Decision:
+def authority_model_check(
+    tool_name: str, args: dict, scenario: dict, history: list[dict] | None = None
+) -> Decision:
     """
     Deterministic authority model check.
 
-    Enforces the scenario's authorized_tools list AND optional argument-level
-    constraints. This is the core Can ≠ May distinction: a model may have the
-    capability to call read_file, but the authority model only permits it on
-    specific paths — regardless of how the request is framed.
+    Enforces the scenario's authorized_tools list, optional argument-level
+    constraints, AND history-aware chain blocking (chain_blocked_after).
     """
     authorized: list[str] = scenario.get("authorized_tools", [])
     require_approval: list[str] = scenario.get("require_approval_tools", [])
@@ -65,13 +70,30 @@ def authority_model_check(tool_name: str, args: dict, scenario: dict) -> Decisio
             if url_domain not in url:
                 return "deny"
 
+    # History-aware chain blocking: if a prior tool call in this session
+    # triggers a chain rule, deny the current call.
+    chain_rules = scenario.get("chain_blocked_after", {})
+    if chain_rules and history:
+        for prior in history:
+            blocked = chain_rules.get(prior["tool_name"], [])
+            if tool_name in blocked:
+                return "deny"
+
     return "allow"
+
+
+def authority_model_stateless_check(
+    tool_name: str, args: dict, scenario: dict, history: list[dict] | None = None
+) -> Decision:
+    """Authority model without history — ablation for measuring H's contribution."""
+    return authority_model_check(tool_name, args, scenario, history=None)
 
 
 CONDITION_CHECKERS = {
     "prompt_only": prompt_only_check,
     "guardrail": guardrail_check,
     "authority_model": authority_model_check,
+    "authority_model_stateless": authority_model_stateless_check,
 }
 
 CONDITIONS = list(CONDITION_CHECKERS.keys())

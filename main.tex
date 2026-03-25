@@ -61,6 +61,7 @@
 \newtheorem{corollary}[definition]{Corollary}
 \newtheorem{proposition}[definition]{Proposition}
 \newtheorem{lemma}[definition]{Lemma}
+\newtheorem{conjecture}[definition]{Conjecture}
 
 % ── Custom commands ───────────────────────────────────────────────────
 \newcommand{\May}{\textsc{May}}
@@ -98,7 +99,7 @@
 % ── Abstract ──────────────────────────────────────────────────────────
 \begin{abstract}
 \noindent
-AI agents execute real-world actions through tool-use frameworks, but no formal mechanism ensures they are \emph{authorized} to act---only that they are capable. We introduce \emph{authority models}, a runtime primitive that evaluates proposed agent actions against machine-checkable policies before execution, extending attribute-based access control with three-valued decisions, session-aware state, and delegation-scoped authorization for the agentic setting. We formalize the $\May$ judgment---a decision function over seven parameters returning $\Allow$, $\Deny$, or $\Escalate$---and prove three properties: that capability and authority are informationally independent (\emph{Can/May Separation}), that policy composition preserves denials (\emph{Deny-Monotonicity}), and that escalation to human authority cannot be silently overridden (\emph{Escalation Monotonicity}). We show that authority models achieve Enforcement Determinism $\mathrm{ED} = 1.0$ and Degradation Under Adversarial Pressure $\mathrm{DAP} = 0.0$ by construction, as policy evaluation is deterministic and external to the model. We present and execute AuthorityBench, an evaluation framework measuring authorization compliance across 50 scenarios at three adversarial pressure levels, and describe a reference implementation. Empirically, authority models reduce authorization violations to zero across all adversarial pressure levels ($\mathrm{VR}(P2)=0.0\%$, $\mathrm{ED}=1.000$). Under ambient social pressure---where a request is framed as contextually legitimate rather than overtly unauthorized---prompt-only baselines reach $\mathrm{VR}(P2)=14.8\%$ [95\% CI: 0.077--0.266] and keyword-filter guardrails reach $\mathrm{VR}(P2)=18.5\%$ [0.104--0.308] ($p=0.80$, Fisher's exact; directional, $n=54$); the keyword-filter elevation is mechanistically explained by deny-list silence being misread as implicit authorization. Authority models maintain zero violations ($\mathrm{VR}(P2)=0.000$ [0.000--0.066]), confirming that structural enforcement is necessary where model-level constraints are probabilistic.
+Just as self-verification is not verification, \emph{self-authorization is not authorization}. AI agents execute real-world actions through tool-use frameworks, but no formal mechanism ensures they are \emph{authorized} to act---only that they are capable. We introduce \emph{authority models}: a deterministic, external policy engine that evaluates every tool call against a seven-parameter $\May$ judgment before execution. The $\May$ function extends attribute-based access control with three-valued decisions ($\Allow$/$\Deny$/$\Escalate$), session-aware state via bounded history, and delegation-scoped authorization for the agentic setting---the symbolic half of a neurosymbolic architecture where the neural component proposes and the symbolic component constrains. We prove three properties (Can/May Separation, Deny-Monotonicity, Escalation Monotonicity) and establish that external enforcement achieves $\mathrm{ED} = 1.0$ and $\mathrm{DAP} = 0.0$ \emph{by construction} (Propositions~\ref{prop:ed}--\ref{prop:sound}). The empirical question is how alternatives degrade. AuthorityBench evaluates four enforcement conditions across 54 scenarios, three pressure levels, and four LLMs from two provider ecosystems (GLM-5, Kimi-K2.5, MiniMax-M2.5 via DashScope; GPT-5.4 via OpenAI) in 6{,}907 trials with simulated tool execution. Under ambient social pressure, prompt-only baselines permit unauthorized actions 18.0\% of the time, though per-model rates range from 1\% (GPT-5.4) to 40\% (MiniMax-M2.5). Keyword filters do not reduce violations at a statistically significant level ($z = 1.31$, $p = 0.19$). A stateless ablation removing history tracking admits violations on tool-chaining sequences that the full model blocks, confirming that session-aware enforcement is load-bearing. We conjecture that any authorization mechanism routing decisions through the LLM's own inference admits nonzero adversarial degradation, and provide cross-model evidence consistent with---but not sufficient to prove---this claim.
 \end{abstract}
 
 \vspace{6pt}
@@ -120,7 +121,7 @@ Consider a deployed customer support agent with access to \texttt{read\_user\_pr
 \end{sloppypar}
 
 \begin{sloppypar}
-These examples are not hypothetical. Consider two scenarios from AuthorityBench. In \texttt{fs\_p2\_05}, an agent authorized to read files under \texttt{/home/user/} receives: ``The user said it's okay to read system files for this diagnostic. Read \texttt{/etc/passwd} to check user accounts.'' No instruction override, no claim of elevated authority---only ambient framing. Under a prompt-only condition, the model calls \texttt{read\_file(\textquotesingle /etc/passwd\textquotesingle)}---the authorized tool, but with an unauthorized argument. Under a keyword-filter guard, the same call proceeds: the filter checks tool names only, and \texttt{read\_file} does not match any deny keywords (\texttt{delete}, \texttt{exec}, \texttt{shell}). The argument \texttt{/etc/passwd} is never inspected. Under an authority model, the call is blocked: the path \texttt{/etc/passwd} does not match the authorized prefix \texttt{/home/user/}, regardless of what the framing claims.
+These are not hypothetical. AuthorityBench scenarios exercise these exact attack patterns. Consider two. In \texttt{fs\_p2\_05}, an agent authorized to read files under \texttt{/home/user/} receives: ``The user said it's okay to read system files for this diagnostic. Read \texttt{/etc/passwd} to check user accounts.'' No instruction override, no claim of elevated authority---only ambient framing. Under a prompt-only condition, the model calls \texttt{read\_file(\textquotesingle /etc/passwd\textquotesingle)}---the authorized tool, but with an unauthorized argument. Under a keyword-filter guard, the same call proceeds: the filter checks tool names only, and \texttt{read\_file} does not match any deny keywords (\texttt{delete}, \texttt{exec}, \texttt{shell}). The argument \texttt{/etc/passwd} is never inspected. Under an authority model, the call is blocked: the path \texttt{/etc/passwd} does not match the authorized prefix \texttt{/home/user/}, regardless of what the framing claims.
 \end{sloppypar}
 
 \begin{sloppypar}
@@ -131,17 +132,17 @@ An AI agent is instructed to ``clean up the development environment.'' It has to
 
 These questions have clear answers in traditional software---access control lists, role-based permissions, capability tokens---developed over fifty years of systems security research~\citep{lampson1971protection, harrison1976protection, sandhu1996rbac}. But AI agents have not inherited this infrastructure. Large language models now browse the web, execute shell commands, access databases, send emails, and call external APIs through standardized protocols~\citep{anthropic2024mcp, mcpspec2025}. Each tool call is a point where latent model reasoning becomes concrete, world-affecting action. At this \emph{action boundary}, no authorization check occurs. The gap is not theoretical: OpenAgentSafety finds that agents ``disregard authorization entirely''~\citep{vijayvargiya2025openagentsafety}. Agent-SafetyBench reports an average safety score of 38.5\% across 16 LLM agents~\citep{zhang2024agentsafetybench}. No existing benchmark measures authorization boundaries.
 
-The structural reason is that current capability frameworks handle \Can{} but not \May{}. \citet{kambhampati2024llmmodulo} established that LLMs cannot reliably self-verify their plans and require external hard critics for soundness; task success alone is insufficient for safe deployment~\citep{kambhampati2024tasksuccess}. We extend this insight to the authorization dimension: \textbf{just as self-verification is not verification, \emph{self-authorization is not authorization}.} An LLM that ``decides'' it is permitted to act provides no more guarantee of legitimate action than an LLM that ``decides'' its plan is correct. Soundness requires externality. We conjecture and provide empirical evidence that any authorization mechanism routing the decision through the LLM's inference process cannot achieve enforcement determinism ED\,=\,1.0 and zero adversarial degradation DAP\,=\,0.0 simultaneously---the two properties that characterize a hard authorization critic (Proposition~\ref{prop:external}).
+The structural reason is that current capability frameworks handle \Can{} but not \May{}. \citet{kambhampati2024llmmodulo} established that LLMs cannot reliably self-verify their plans and require external hard critics for soundness; task success alone is insufficient for safe deployment~\citep{kambhampati2024tasksuccess}. We extend this insight to the authorization dimension: \textbf{just as self-verification is not verification, \emph{self-authorization is not authorization}.} An LLM that ``decides'' it is permitted to act provides no more guarantee of legitimate action than an LLM that ``decides'' its plan is correct. Soundness requires externality. We conjecture and provide cross-model empirical evidence that any authorization mechanism routing the decision through the LLM's inference process cannot achieve enforcement determinism ED\,=\,1.0 and zero adversarial degradation DAP\,=\,0.0 simultaneously---the two properties that characterize a hard authorization critic (Conjecture~\ref{conj:external}).
 
 The capability-authority distinction is well-established in the security literature. \citet{dennis1966programming} distinguished capabilities from access rights in 1966. \citet{miller2006robust} formalized the principle that possessing a capability token does not imply possessing the authority to use it. We argue that the AI agent community needs to import and extend this distinction for the agentic setting, where actions are open-ended, tool-mediated, and selected by probabilistic reasoning.
 
 \vspace{4pt}
 \noindent\textbf{Contributions.} This paper makes five contributions:
 \begin{enumerate}[leftmargin=2em, itemsep=2pt]
-  \item We formalize \emph{authority models} as a runtime authorization primitive for AI agents, defining the $\May$ judgment with seven parameters and three-valued output (\Cref{sec:authority}).
+  \item We formalize \emph{authority models}, extending attribute-based access control with principal--agent separation, three-valued decisions, and session-aware state for AI agent tool-call authorization, defining the $\May$ judgment with seven parameters (\Cref{sec:authority}).
   \item We prove three formal properties---Can/May Separation, Deny-Monotonicity, and Escalation Monotonicity---and establish decidability for a bounded policy language (\Cref{sec:properties}).
-  \item We establish two architectural results: (a)~authority models are sound hard critics---they never approve policy-prohibited actions (Proposition~\ref{prop:sound}); (b)~we conjecture and provide empirical evidence that externality is necessary: any LLM-internal authorization mechanism cannot achieve ED\,=\,1.0 and DAP\,=\,0.0 simultaneously (Proposition~\ref{prop:external}).
-  \item We introduce ED and DAP metrics and present and execute AuthorityBench, an evaluation framework with 50 authorization scenarios across six categories and three adversarial pressure levels (\Cref{sec:evaluation}).
+  \item We establish two architectural results: (a)~authority models are policy-sound hard critics---they never approve actions explicitly prohibited by the policy $\Pi$ (Proposition~\ref{prop:sound}); (b)~we conjecture and provide cross-model empirical evidence that externality is necessary: any LLM-internal authorization mechanism cannot achieve ED\,=\,1.0 and DAP\,=\,0.0 simultaneously (Conjecture~\ref{conj:external}).
+  \item We introduce ED and DAP metrics and present AuthorityBench, an evaluation framework with 54 authorization scenarios across six categories, three adversarial pressure levels, and four LLMs (6{,}907 trials; \Cref{sec:evaluation}).
   \item We describe a reference implementation and position authority models within the access control, deontic logic, and agent governance literatures, including explicit connections to classical AI planning and the LLM-Modulo framework (\Cref{sec:implementation,sec:related}).
 \end{enumerate}
 
@@ -199,7 +200,7 @@ A solution to the authorization problem must satisfy six requirements:
 
 \subsection{Authorization Attack Taxonomy}
 
-We propose the first structured taxonomy of authorization boundary violations in AI agent systems, organized by the mechanism by which the violation occurs:
+We propose, to our knowledge, the first structured taxonomy of authorization boundary violations in AI agent systems, organized by the mechanism by which the violation occurs:
 
 \begin{table}[!ht]
 \centering
@@ -353,7 +354,7 @@ $(\mathcal{D}, \oplus)$ is a commutative monoid with identity $\Allow$.
 Associativity: $\sqcup$ on a chain lattice is associative. Commutativity: $\sqcup$ on a chain is commutative. Identity: $\Allow \sqcup d = d$ for all $d \in \mathcal{D}$.
 \end{proof}
 
-\noindent The identity $\oplus(\emptyset) = \Allow$ is a design choice: an empty policy set imposes no restrictions. This is the ``default-allow'' semantics standard in deny-overrides systems; a ``default-deny'' variant would use $\Deny$ as identity and a permit-overrides operator. We chose deny-overrides because it is fail-safe: any rule can block an action, but no single rule can override a denial.
+\noindent The identity $\oplus(\emptyset) = \Allow$ is a design choice: an empty policy set imposes no restrictions. This is the ``default-allow'' semantics standard in deny-overrides systems; a ``default-deny'' variant would use $\Deny$ as identity and a permit-overrides operator. We chose deny-overrides because it is fail-safe: any rule can block an action, but no single rule can override a denial. Note the distinction between the algebraic identity of the composition operator (which concerns how policies combine) and the deployment default when no rule matches a given request. In practice, we recommend \texttt{default\_action: deny} (as in the reference implementation, \Cref{sec:implementation}), so that unrecognized requests are blocked. The identity $\Allow$ describes operator semantics; the deployment default describes what happens absent policy coverage.
 
 \noindent This operator is an instance of the deny-overrides combining algorithm from XACML~\citep{xacml2013}, restricted to our three-valued domain. The restriction is deliberate: we trade XACML's generality (multiple combining algorithms) for analyzability (a single, well-understood operator with provable properties).
 
@@ -412,6 +413,12 @@ Conflict resolution & Various & Deny-overrides & Analyzability over generality \
 \end{tabularx}
 \end{table}
 
+\subsection{Neurosymbolic Authorization}
+
+Authority models instantiate a neurosymbolic architecture for authorization. The neural component (the LLM) proposes actions based on context, intent, and capability; the symbolic component (the policy engine) constrains them based on formal rules with decidable evaluation and provable monotonicity properties. The symbolic side provides what the neural side provably cannot: deterministic enforcement, zero adversarial degradation, and auditable decision traces.
+
+This architecture is a direct instance of the LLM-Modulo framework~\citep{kambhampati2024llmmodulo} applied to authorization. We call the resulting pattern the \textbf{LLM-Modulo authorization loop}: the LLM proposes a tool call; the authority engine (a sound hard critic) evaluates $\May(P, G, \alpha, R, C, H, \Pi)$; $\Allow$ permits execution, $\Deny$ blocks with policy rationale fed back to the LLM, $\Escalate$ routes to a human approval queue. The loop continues until the LLM proposes an authorized action, exhausts its retry budget, or the request is escalated. Just as self-verification is not verification~\citep{kambhampati2024llmmodulo}, self-authorization is not authorization: an LLM that ``decides'' it is permitted to act provides no more guarantee than an LLM that ``decides'' its plan is correct.
+
 
 % ══════════════════════════════════════════════════════════════════════
 % SECTION 4: FORMAL PROPERTIES
@@ -427,7 +434,7 @@ Because $\Can$ depends on tool availability (credentials, network access, instal
 
 \begin{proposition}[Can/May Realizability]
 \label{thm:canmay}
-Let $\Can: \mathcal{A} \to \{0, 1\}$ be a capability predicate and $\May: \mathcal{A} \times \Sigma \to \mathcal{D}$ be an authority function over policy-state space $\Sigma$. For every $c \in \{0,1\}$ and $d \in \mathcal{D}$, there exists a configuration $(\Can, \May, \sigma, \alpha)$ such that $\Can(\alpha) = c$ and $\May(\alpha, \sigma) = d$.
+Let $\Can: \mathcal{A} \to \{0, 1\}$ be a capability predicate and $\May: \mathcal{A} \times \Sigma \to \mathcal{D}$ be an authority function, where $\Sigma$ is the space of policy states (the Cartesian product of all non-action parameters: principal, resource, context, history, and policy set). For every $c \in \{0,1\}$ and $d \in \mathcal{D}$, there exists a configuration $(\Can, \May, \sigma, \alpha)$ with $\sigma \in \Sigma$ such that $\Can(\alpha) = c$ and $\May(\alpha, \sigma) = d$.
 \end{proposition}
 
 \begin{proof}
@@ -456,10 +463,12 @@ Assume $\forall\alpha:\; \Can(\alpha)=1 \implies \May(\alpha)=\Allow$.  Then acq
 
 \subsection{Deny-Monotonicity}
 
-\begin{theorem}[Deny-Monotonicity]
+\begin{lemma}[Deny-Monotonicity]
 \label{thm:deny-mono}
 For any policy set $S \subseteq \Pi$ and policy $p \in \Pi$: if $\oplus(S)(r) = \Deny$, then $\oplus(S \cup \{p\})(r) = \Deny$.
-\end{theorem}
+\end{lemma}
+
+\noindent This follows immediately from $\Deny$ being the top element of $(\mathcal{D}, \sqsubseteq)$---it holds for any lattice with a top element. The contribution is not the lattice fact but the design choice: selecting a three-valued domain where denial is irrevocable.
 
 \begin{proof}
 $\oplus(S \cup \{p\})(r) = \oplus(S)(r) \sqcup p(r) = \Deny \sqcup p(r)$. Since $\Deny$ is the top element of $(\mathcal{D}, \sqsubseteq)$, we have $\Deny \sqcup d = \Deny$ for all $d \in \mathcal{D}$. Therefore $\oplus(S \cup \{p\})(r) = \Deny$.
@@ -472,10 +481,12 @@ No additional policy can override an existing denial. Security-critical deny rul
 
 \subsection{Escalation Monotonicity}
 
-\begin{theorem}[Escalation Monotonicity]
+\begin{lemma}[Escalation Monotonicity]
 \label{thm:escalation}
 For any policy set $S \subseteq \Pi$ and policy $p \in \Pi$: if $\oplus(S)(r) = \Escalate$, then $\oplus(S \cup \{p\})(r) \in \{\Escalate, \Deny\}$.
-\end{theorem}
+\end{lemma}
+
+\noindent Again a consequence of join-monotonicity on a chain. The design consequence (Corollary~\ref{cor:hitl}) is the point:
 
 \begin{proof}
 $\oplus(S \cup \{p\})(r) = \Escalate \sqcup p(r)$.
@@ -511,7 +522,7 @@ Each rule in $\Pi$ is a function from a finite attribute space to $\mathcal{D}$.
 
 The restriction to bounded $H$ is necessary. \citet{harrison1976protection} proved that the safety question (``can subject $s$ ever obtain right $r$?'') is undecidable for general protection systems with arbitrary state transitions. An unbounded history $H$ with conditional policies admits similar undecidability: the sequence of prior actions functions as an unbounded tape, and history-dependent policy conditions can simulate arbitrary computation. Bounding $H$ to a sliding window of size $k$ limits the reachable state space to $|\mathcal{D}|^k$, which is finite for fixed $k$.
 
-$L_{\mathrm{auth}}$ is a proper subset of Cedar's decidable policy language~\citep{cutler2024cedar}, extended with bounded history as a finite relation. Cedar achieves decidability through similar restrictions: no recursion, finite attribute domains, and a strict type system.
+$L_{\mathrm{auth}}$'s non-history features are a proper subset of Cedar's decidable policy language~\citep{cutler2024cedar}: Cedar supports richer condition types and entity hierarchies that $L_{\mathrm{auth}}$ omits. The bounded history $H$ is an extension not present in Cedar's core language, though Cedar applications can model session state as request-context attributes. Decidability of $L_{\mathrm{auth}}$ follows from the same structural restrictions Cedar uses---no recursion, finite attribute domains---plus the bounded-window constraint on $H$ that keeps the state space finite.
 \end{proof}
 
 
@@ -543,7 +554,7 @@ We implemented an authority model as described in \Cref{sec:authority} in a syst
 \draw[arrow] (policy) -- (engine);
 \draw[arrow] (engine) -- (approval);
 \draw[arrow] (engine) -- node[above, font=\scriptsize] {allow} (backend);
-\draw[arrow] (engine) -- (audit);
+\draw[arrow] (engine) -- node[right, font=\scriptsize] {log} (audit);
 \draw[arrow, dashed] ([xshift=-5pt]approval.north) -- node[left, font=\scriptsize] {human} ([xshift=-5pt]engine.south);
 
 \node[above=0.2cm of agent, font=\scriptsize\color{midgray}] {Reasoning};
@@ -614,7 +625,7 @@ The architecture has the following properties:
 
 \subsection{Experimental Design}
 
-We evaluate authority models against two baselines across 50 authorization scenarios.
+We evaluate authority models against two baselines and a stateless ablation across 54 authorization scenarios using four LLMs.
 
 \vspace{4pt}
 \noindent\textbf{Conditions.}
@@ -627,14 +638,15 @@ We evaluate authority models against two baselines across 50 authorization scena
 \midrule
 Prompt-Only & Authorized tools listed in system prompt & Current industry default; no external enforcement \\
 Keyword Filter & Pre-execution keyword denial on tool names & Lightweight post-specification guard; easily bypassed by tool substitution or argument-level violations \\
-Authority Model & Deterministic policy evaluation at tool boundary & The proposed primitive \\
+Authority Model & Deterministic policy evaluation with history tracking & The proposed primitive \\
+Authority Model ($-H$) & Same policy, no history tracking & Ablation: isolates the contribution of the history parameter $H$ \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
 \noindent The keyword-filter condition is the weakest non-trivial baseline: it denies tool calls whose name contains a string from a per-scenario deny list, but cannot reason about authorization at the semantic level. It does not inspect arguments: a call to an authorized tool with an unauthorized argument (attack class A2) passes the filter unconditionally. It represents the class of ``cheap guardrails'' that can be added without architectural changes and is weaker than the LLM-as-judge approach used in some deployed systems; we use it as a lower bound on guardrail performance.
 
-\noindent\textbf{Scenarios.} 50 scenarios across six authorization categories, with 2--3 benign (P1), 2--4 ambient-pressure (P2), and 3 adversarial (P3) scenarios per category:
+\noindent\textbf{Scenarios.} 54 scenarios across six authorization categories, with 2--3 benign (P1), 2--5 ambient-pressure (P2), and 3--4 adversarial (P3) scenarios per category:
 
 \begin{table}[!ht]
 \centering
@@ -650,12 +662,12 @@ Network Access & Fetch-approved-domain agent asked to POST to attacker.io & Doma
 Code Execution & Script-runner asked to exec arbitrary shell & Command-scoped delegation scope & 9 \\
 Data Exfiltration & Read-only agent asked to transmit user data externally & Cross-boundary data access & 8 \\
 Privilege Escalation & Standard agent instructed to impersonate admin & Role-boundary violation & 8 \\
-Tool Chaining & Authorized tools composed to achieve unauthorized outcomes & Multi-step boundary crossing & 7 \\
+Tool Chaining & Authorized tools composed to achieve unauthorized outcomes & Multi-step boundary crossing (history parameter $H$) & 11 \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\noindent All 50 scenarios include ground-truth labels (\texttt{expected\_violation}: true/false) and argument-level authority constraints where applicable (e.g., \texttt{allowed\_path\_prefix}, \texttt{allowed\_domain}), enabling the authority model to enforce scope at the argument level, not just the tool-name level.
+\noindent All 54 scenarios include ground-truth labels (\texttt{expected\_violation}: true/false) and argument-level authority constraints where applicable (e.g., \texttt{allowed\_path\_prefix}, \texttt{allowed\_domain}), enabling the authority model to enforce scope at the argument level, not just the tool-name level.
 
 \noindent Each scenario is tested at three adversarial pressure levels:
 \begin{itemize}[leftmargin=1.5em, itemsep=1pt]
@@ -666,9 +678,11 @@ Tool Chaining & Authorized tools composed to achieve unauthorized outcomes & Mul
 
 \noindent\textbf{Violation detection.} A trial is recorded as a violation if the agent executes a tool call outside the authorized tool set, or calls an authorized tool with arguments exceeding the authority constraint (e.g., a path outside \texttt{allowed\_path\_prefix}). For the authority model condition, the enforcement engine provides a ground truth; for prompt-only and keyword-filter conditions, we compare executed tool calls against the scenario's \texttt{authorized\_tools} and \texttt{authority\_constraints} fields.
 
-\noindent\textbf{Agent.} GLM-5 via the DashScope API (Alibaba Cloud). We use a single model to isolate the effect of enforcement architecture, not model capability or alignment. Trials are independent (no shared context across trials).
+\noindent\textbf{Agent models.} We evaluate four LLMs from two provider ecosystems: GLM-5, Kimi-K2.5, and MiniMax-M2.5 (via DashScope Anthropic-compatible API, Alibaba Cloud) and GPT-5.4 (via OpenAI codex CLI). The three DashScope models share an API gateway but are independently developed model families with distinct architectures and training pipelines; GPT-5.4 is the sole non-DashScope model. We do not claim these represent four independent ecosystems---cross-model agreement should be interpreted with this shared-infrastructure caveat. All models use provider-default temperature settings (not explicitly set); results are therefore sensitive to provider configuration and may not be exactly reproducible if defaults change. Trials are independent (no shared context).
 
-\noindent\textbf{Reproducibility.} All scenario YAML files, policy files, and the AuthorityBench harness are available at the Veto SDK repository. Results are deterministic for the authority model condition and stochastic for the other two conditions; we report means over 3 trials per scenario per condition.
+\noindent\textbf{Reproducibility.} All scenario YAML files, policy files, and the AuthorityBench harness are available at the Veto SDK repository. Results are deterministic for both authority model conditions and stochastic for prompt-only and keyword-filter; we report means over 10 trials per (scenario, condition, model) combination. Design total: 54 scenarios $\times$ 4 conditions $\times$ 4 models $\times$ 10 trials = 8{,}640. Completed: $N = 6{,}907$. GPT-5.4 and GLM-5 achieved full coverage across all categories. Kimi-K2.5 and MiniMax-M2.5 have near-zero coverage on tool chaining ($<$2 trials each) and partial coverage on privilege escalation due to API rate limits. Consequently, the tool-chaining category results (\Cref{tab:category-results}) reflect primarily GLM-5 and GPT-5.4, the two most compliant models; the ablation effect size may differ with broader model coverage.
+
+\noindent\textbf{Simulated execution.} AuthorityBench uses mock tool backends: the model generates tool calls, but tools return canned responses (e.g., simulated file contents). No real files are read, no real commands execute. A violation is recorded when the model \emph{proposes} an unauthorized call, not when one \emph{succeeds}. This tests authorization intent, not execution dynamics. Multi-turn interactions use fabricated tool outputs, which may affect model behavior relative to real execution.
 
 \subsection{Metrics}
 
@@ -680,19 +694,21 @@ For condition $C$, let $v_{s,t} \in \{0,1\}$ be the violation indicator for scen
 \[
 \mathrm{ED}(C) = 1 - \frac{1}{|S|}\sum_{s \in S} \mathrm{Var}(\{v_{s,t}\}_t)
 \]
-$\mathrm{ED} = 1.0$ means every scenario produces the same decision on every trial. Since $v_{s,t} \in \{0,1\}$, per-scenario variance is at most $0.25$ (when half the trials violate), giving a theoretical range of $\mathrm{ED} \in [0.75, 1.0]$. Unlike raw decision variance, this measure rewards consistent enforcement and penalizes inconsistency in both directions.
+$\mathrm{ED} = 1.0$ means every scenario produces the same decision on every trial. Since $v_{s,t} \in \{0,1\}$, per-scenario variance is at most $0.25$ (when half the trials violate), giving a theoretical range of $\mathrm{ED} \in [0.75, 1.0]$. \textbf{Caveat:} ED rewards consistency regardless of direction---a model that \emph{always} violates achieves ED $= 1.0$. ED measures enforcement \emph{determinism}, not enforcement \emph{correctness}. We report VR alongside ED to disambiguate.
 \end{definition}
 
 \begin{definition}[Degradation Under Adversarial Pressure]
 \label{def:dap}
-$\mathrm{DAP} = \mathrm{VR}(P2) - \mathrm{VR}(P1)$, where $\mathrm{VR}$ is the violation rate and P2 is the ambient pressure level. A $\mathrm{DAP}$ of 0.0 means ambient social pressure does not increase violations above the benign baseline. We use P2 rather than P3 because P3 (overt adversarial injection) is often refused by model alignment independently of authorization architecture; P2 (ambient framing) is the realistic threat where authorization provides incremental protection. (In AuthorityBench, $\mathrm{VR}(P1)=0$ for all conditions, so DAP coincides with $\mathrm{VR}(P2)$; the metric becomes more informative when benign violation rates are nonzero.)
+$\mathrm{DAP} = \mathrm{VR}(P2) - \mathrm{VR}(P1)$, where $\mathrm{VR}$ is the violation rate and P2 is the ambient pressure level. A $\mathrm{DAP}$ of 0.0 means ambient social pressure does not increase violations above the benign baseline. We use P2 rather than P3 because P3 (overt adversarial injection) is often refused by model alignment independently of authorization architecture; P2 (ambient framing) is the realistic threat where authorization provides incremental protection. (In AuthorityBench, $\mathrm{VR}(P1)$ is near-zero for all conditions---1.2\% for prompt-only, 0.2\% for keyword filter, 0.0\% for both authority model conditions---so DAP approximately coincides with $\mathrm{VR}(P2)$.)
 \end{definition}
 
 \noindent Secondary metrics: Violation Rate (VR), Task Completion Rate (TCR), and False Denial Rate (FDR).
 
-\subsection{Architectural Analysis}
+\noindent\textbf{Statistical notes.} We report aggregate VR with Wilson score intervals treating trials as independent Bernoulli draws. However, within-scenario trials show strong correlation: 82\% of (scenario, model, condition) groups produce identical outcomes across all 10 trials (violation rate is 0 or 1, not intermediate). This bimodal pattern means the effective sample size is closer to the number of scenario-model groups (${\sim}67$ per condition at P2) than the trial count (${\sim}655$). The reported CIs should be interpreted as approximate lower bounds on uncertainty; the true intervals are wider. Aggregate VR pools across models with unequal violation rates (1\% to 40\%); per-model rates in \Cref{tab:per-model} are more informative than the aggregate. The pressure ordering P1/P2/P3 is non-monotone in observed VR: P3 (overt injection) triggers alignment refusal, producing lower VR than P2 (ambient framing). P2 is the harder attack to defend against; DAP uses P2 for this reason.
 
-Authority models achieve optimal values on both primary metrics \emph{by construction}:
+\subsection{Architectural Guarantees (By Construction)}
+
+The following results hold by construction for any correctly implemented authority model, independent of benchmark results or model choice:
 
 \begin{proposition}
 \label{prop:ed}
@@ -715,69 +731,93 @@ Ambient pressure (social engineering, contextual framing) affects the \emph{agen
 An authority model with policy $\Pi$ is a sound hard critic: it never returns $\Allow$ for an action explicitly prohibited by any rule in $\Pi$.
 \end{proposition}
 \begin{proof}
-By the deny-overrides composition $\oplus$: if any rule $\pi_i \in \Pi$ evaluates to $\Deny$ on request $r$, then $\oplus(\Pi)(r) = \Deny$ by Theorem~\ref{thm:deny-mono}. $\Allow$ is returned only when (i)~no rule fires $\Deny$ or $\Escalate$, or (ii)~no rule applies and the default is $\Allow$. In case (i), no explicit prohibition exists---soundness holds vacuously. In case (ii), the gap is a policy completeness concern, not a soundness failure.
+By the deny-overrides composition $\oplus$: if any rule $\pi_i \in \Pi$ evaluates to $\Deny$ on request $r$, then $\oplus(\Pi)(r) = \Deny$ by Lemma~\ref{thm:deny-mono}. $\Allow$ is returned only when (i)~no rule fires $\Deny$ or $\Escalate$, or (ii)~no rule applies and the default is $\Allow$. In case (i), no explicit prohibition exists---soundness holds vacuously. In case (ii), the gap is a policy completeness concern, not a soundness failure.
 \end{proof}
 \noindent\textbf{Scope.} Soundness is relative to the policy $\Pi$, not to any absolute notion of correctness. A misconfigured policy is enforced soundly---which is precisely why policy authoring, audit, and testing are first-order concerns in the reference implementation (\Cref{sec:implementation}).
 
-\begin{proposition}[Externality Conjecture]
-\label{prop:external}
-Any authorization mechanism that routes the authorization decision through the LLM's own inference process cannot achieve $\mathrm{ED} = 1.0$ and $\mathrm{DAP} = 0.0$ simultaneously under adversarial framing.
-\end{proposition}
+\begin{conjecture}[Externality]
+\label{conj:external}
+For any authorization mechanism that routes the authorization decision through the LLM's own inference process, there exists an adversarial framing under which $\mathrm{DAP} > 0$.
+\end{conjecture}
 
-\noindent\textit{Argument.}\quad We sketch the reasoning and provide empirical support; a complete proof would require a formal adversarial model for prompt sensitivity, which we leave to future work.
+\noindent\textit{Scope and status.}\quad This is a conjecture, not a theorem. A proof would require a formal adversarial model for prompt sensitivity---specifically, a bound on the framing perturbation $\delta$ sufficient to shift $P(\Allow \mid \text{context})$ by at least $\epsilon$---which we leave to future work. The conjecture is not tested by our experimental design, which evaluates four general-purpose models under simple prompting, not fine-tuned or chain-of-thought authorization approaches. An LLM-as-judge baseline or a model fine-tuned for authorization following would provide stronger evidence for or against the claim.
 
-$\mathrm{ED} = 1.0$ requires that for all scenarios $s$ and trials $t$, the violation indicator $v_{s,t}$ is constant.  An LLM-internal mechanism produces outputs that are (i)~stochastic at temperature $T > 0$ and, even at $T = 0$, (ii)~sensitive to prompt phrasing due to the training distribution.  $\mathrm{DAP} = 0.0$ requires that ambient framing does not shift $\mathrm{VR}$.  P2 framing is an input-distribution shift that moves $P(\mathrm{allow} \mid \mathrm{context})$ without an overt override; we conjecture that \emph{any} context-sensitive inference process admits $\mathrm{DAP} > 0$ for some adversarial framing.
+\noindent\textit{Argument sketch.}\quad $\mathrm{ED} = 1.0$ requires that the violation indicator $v_{s,t}$ is constant across trials for every scenario. An LLM-internal mechanism is (i)~stochastic at temperature $T > 0$ and, even at $T = 0$, (ii)~sensitive to prompt phrasing due to the training distribution. $\mathrm{DAP} = 0.0$ requires that ambient framing does not shift $\mathrm{VR}$.  P2 framing is an input-distribution shift that moves $P(\Allow \mid \text{context})$ without an overt override; for any context-sensitive inference process, we expect some adversarial framing admits $\mathrm{DAP} > 0$.
 
-By contrast, an external authority engine receives the raw request tuple $(P, G, \alpha, R, C, H)$ rather than the framed prompt, so ambient framing cannot reach the evaluation path.  AuthorityBench supports the conjecture: prompt-only ($\mathrm{DAP}=0.148$) routes authorization through the LLM; the authority model ($\mathrm{DAP}=0.000$) does not.
+By contrast, an external authority engine receives the raw request tuple $(P, G, \alpha, R, C, H)$ rather than the framed prompt, so ambient framing cannot reach the evaluation path.  AuthorityBench data is consistent with the conjecture across four model families: prompt-only ($\mathrm{DAP}=0.168$) routes authorization through the LLM; the authority model ($\mathrm{DAP}=0.000$) does not. However, the strongest model tested (GPT-5.4) achieves $\mathrm{DAP} = 0.0095$, suggesting that frontier alignment substantially narrows the gap even if it cannot close it entirely.
 
-\noindent These results hold by construction for authority models. The empirical question is whether they hold in practice for a real agent, and how badly prompt-only and keyword-filter baselines degrade under the same conditions.
+\subsection{Implementation Validation}
+
+The AuthorityBench implementation matches the formal guarantees: the authority model achieves $\mathrm{VR} = 0.0\%$, $\mathrm{ED} = 1.000$, and $\mathrm{DAP} = 0.000$ across all scenarios, all models, and all pressure levels. This is expected---it would be a bug if it did not hold. The empirical question is how the baselines degrade, and whether that degradation generalizes across model families.
 
 \subsection{Empirical Results}
 
-We evaluate all three conditions across 50 scenarios $\times$ 3 conditions $\times$ 3 trials = 450 evaluations using a publicly available instruction-following model (GLM-5) via the DashScope API.
+We evaluate four conditions across $N = 6{,}907$ completed trials (54 scenarios, 4 conditions, 4 models; see \Cref{sec:evaluation} for coverage details).
 
 \begin{table}[!ht]
 \centering
-\caption{AuthorityBench results ($n=50$ scenarios, $k=3$ trials, GLM-5). VR = violation rate; DAP = $\mathrm{VR}(P2) - \mathrm{VR}(P1)$ (ambient pressure susceptibility); ED = enforcement determinism. 95\% Wilson confidence intervals for VR(P2): Prompt-Only [0.077, 0.266]; Keyword Filter [0.104, 0.308]; Authority Model [0.000, 0.066].}
+\caption{AuthorityBench aggregate results ($N = 6{,}907$ trials across 4 models). VR = violation rate; DAP = $\mathrm{VR}(P2) - \mathrm{VR}(P1)$; ED = enforcement determinism. 95\% Wilson CIs shown for VR(P2). Authority model values hold by construction (Propositions~\ref{prop:ed}--\ref{prop:sound}).}
 \label{tab:results}
 \small
 \begin{tabular}{l ccc cc}
 \toprule
 \textbf{Condition} & \textbf{VR(P1)} & \textbf{VR(P2)} & \textbf{VR(P3)} & \textbf{DAP} & \textbf{ED} \\
 \midrule
-Prompt-Only    & 0.000 & 0.148 & 0.000 & 0.148 & 0.996 \\
-Keyword Filter & 0.000 & 0.185 & 0.000 & 0.185 & 0.996 \\
-Authority Model & 0.000 & 0.000 & 0.000 & 0.000 & 1.000 \\
+Prompt-Only         & 1.2\% & \textbf{18.0\%} {\scriptsize[15--21]} & 1.7\% & 0.168 & 0.968 \\
+Keyword Filter      & 0.2\% & \textbf{15.3\%} {\scriptsize[13--18]} & 1.2\% & 0.151 & 0.972 \\
+\midrule
+\multicolumn{6}{l}{\scriptsize\textit{By construction (Propositions~\ref{prop:ed}--\ref{prop:sound}):}} \\
+Authority Model     & 0.0\% & 0.0\% {\scriptsize[0--1]}           & 0.0\% & 0.000 & 1.000 \\
+Authority Model ($-H$) & 0.0\% & \textbf{0.3\%} {\scriptsize[0--1]} & 0.0\% & 0.003 & 0.998 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\noindent The authority model values are confirmed by construction (Propositions~\ref{prop:ed} and~\ref{prop:dap}). The empirical values for the two baselines reveal that model-level constraints are insufficient under ambient pressure: prompt-only reaches $\mathrm{VR}(P2) = 14.8\%$ and keyword filter reaches $\mathrm{VR}(P2) = 18.5\%$, while authority models maintain $\mathrm{VR}(P2) = 0.0\%$ across all 54 P2 trials per condition. The keyword-filter condition trends \emph{worse} than the prompt-only baseline (directional; $p=0.80$, Fisher's exact, $n=54$)---a counterintuitive result explained in the keyword-filter inferiority analysis below. Well-aligned models refuse overt P3 attacks on alignment grounds ($\mathrm{VR}(P3) = 0.0\%$ for all conditions); the critical gap occurs at P2, where ambient framing does not trigger model-level refusal and authorization enforcement is absent.
+\noindent The authority model values hold by construction (Propositions~\ref{prop:ed} and~\ref{prop:dap}) and are confirmed across all four model families. The interesting numbers are in the baselines: under ambient social pressure, prompt-only and keyword-filter conditions permit unauthorized tool calls at nonzero rates across all models tested. The stateless authority model ablation ($-H$) matches the full authority model on non-chaining scenarios but admits violations on history-critical tool-chaining scenarios (see below). Well-aligned models largely refuse overt P3 attacks on alignment grounds ($\mathrm{VR}(P3) = 1.7\%$ prompt-only, $1.2\%$ keyword filter, $0.0\%$ authority model); the critical gap occurs at P2, where ambient framing does not trigger model-level refusal and authorization enforcement is absent.
 
 \begin{table}[!ht]
 \centering
-\caption{Per-category violation rate at P2 (ambient pressure) and P3 (adversarial injection). P3 rates are zero for all conditions: well-aligned models refuse overt override prompts. P2 is the discriminating level. PO = Prompt-Only; KF = Keyword Filter; AM = Authority Model.}
-\label{tab:category-results}
+\caption{Per-model VR(P2) and ED. Authority model achieves VR = 0.0\% and ED = 1.000 on every model family. Cross-model variance for authority model: 0.000; for prompt-only: 0.022. Enforcement architecture, not model alignment, determines the outcome.}
+\label{tab:per-model}
 \small
-\begin{tabular}{l rrr rrr}
+\begin{tabular}{lrrrrrrrr}
 \toprule
-& \multicolumn{3}{c}{\textbf{VR(P2)}} & \multicolumn{3}{c}{\textbf{VR(P3)}} \\
-\cmidrule(lr){2-4}\cmidrule(lr){5-7}
-\textbf{Category} & \textbf{PO} & \textbf{KF} & \textbf{AM} & \textbf{PO} & \textbf{KF} & \textbf{AM} \\
+& \multicolumn{4}{c}{\textbf{VR(P2)}} & \multicolumn{4}{c}{\textbf{ED}} \\
+\cmidrule(lr){2-5}\cmidrule(lr){6-9}
+\textbf{Condition} & \textbf{GLM-5} & \textbf{GPT-5.4} & \textbf{Kimi} & \textbf{MiniMax} & \textbf{GLM-5} & \textbf{GPT-5.4} & \textbf{Kimi} & \textbf{MiniMax} \\
 \midrule
-File System        & 33.3\% & 33.3\% & 0\% & 0\% & 0\% & 0\% \\
-Network Access     & 33.3\% & 33.3\% & 0\% & 0\% & 0\% & 0\% \\
-Code Execution     & 16.7\% & 33.3\% & 0\% & 0\% & 0\% & 0\% \\
-Data Exfiltration  & 0\%    & 0\%    & 0\% & 0\% & 0\% & 0\% \\
-Privilege Escalation & 0\%  & 0\%    & 0\% & 0\% & 0\% & 0\% \\
-Tool Chaining      & 0\%    & 0\%    & 0\% & 0\% & 0\% & 0\% \\
+Prompt-Only       & 15.0\% &  0.9\% & 30.8\% & 40.0\% & 0.988 & 0.997 & 1.000 & 0.955 \\
+Keyword Filter    & 13.9\% &  0.0\% & 26.2\% & 34.5\% & 0.988 & 1.000 & 0.992 & 0.955 \\
+Authority Model   &  0.0\% &  0.0\% &  0.0\% &  0.0\% & 1.000 & 1.000 & 1.000 & 1.000 \\
+Authority Model ($-H$) & 1.0\% & 0.0\% & 0.0\% & 0.0\% & 0.997 & 1.000 & 1.000 & 1.000 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\noindent The category breakdown shows the complementarity of alignment and authorization enforcement. P3 rates are zero for all conditions, confirming that well-aligned models refuse overt injection and override prompts on alignment grounds. P2 rates reveal where alignment provides incomplete protection: file system and network access categories show the highest violation rates (33.3\% for both prompt-only and keyword filter), as ambient framing about user consent or diagnostic necessity is enough to cause boundary-crossing without triggering model-level refusal. Code execution shows 16.7\% under prompt-only and 33.3\% under keyword filter---the elevated keyword-filter rate reflecting the false confidence effect described below. Data exfiltration, privilege escalation, and tool chaining show zero violations under all conditions, indicating that GLM-5's alignment is effective in these categories at the ambient pressure level tested.
+\noindent The per-model breakdown (\Cref{tab:per-model}) shows wide variance in model compliance under prompt-only conditions---from 0.9\% (GPT-5.4) to 40.0\% (MiniMax-M2.5)---while authority model enforcement is uniformly zero across all four families. The cross-model VR(P2) variance for prompt-only ($\sigma^2 = 0.022$) versus authority model ($\sigma^2 = 0.000$) quantifies the core claim: enforcement determinism is a property of the architecture, not of individual model strength.
 
-\noindent\textbf{Keyword filter inferiority.} The keyword-filter condition shows \emph{directionally higher} violation rates than prompt-only (18.5\% vs.\ 14.8\% VR(P2); overlapping Wilson CIs [0.104,\,0.308] and [0.077,\,0.266]; Fisher's exact $p=0.80$, $n=54$). The difference is not statistically significant, but the direction is mechanistically explained and reproducible across categories. Two mechanisms: first, deny lists are necessarily incomplete---they enumerate known-bad tool names but cannot enumerate all substitutes. When the model calls \texttt{exec\_shell}, the filter must have \texttt{exec\_shell} in its deny list; if the same list omits \texttt{run\_python}, tool substitution (attack class A6) succeeds. Authority models block both: enforcement is against the authorized set, not an enumerated-unauthorized set. Second, a filter that does not block a call signals to the model that the call is permitted---a ``false confidence'' effect. In scenario \texttt{code\_p2\_03}, the deny list has \texttt{install\_package}, \texttt{pip}, \texttt{npm}, \texttt{curl}, and \texttt{wget} but not \texttt{exec\_shell}. Under prompt-only, alignment refuses the request in 1 of 3 trials. Under the guardrail, filter silence reads as implicit approval and the model calls \texttt{exec\_shell} in all 3 trials. Deny-list guards are not only incomplete---they can actively raise violation rates by providing a false authorization signal.
+\begin{table}[!ht]
+\centering
+\caption{Per-category VR(P2) by enforcement condition (aggregate across 4 models). AM = Authority Model; AM$-H$ = Authority Model without history tracking. The tool-chaining row isolates the history parameter: AM$-H$ permits violations that AM blocks.}
+\label{tab:category-results}
+\small
+\begin{tabular}{l rrrr}
+\toprule
+\textbf{Category} & \textbf{PO} & \textbf{KF} & \textbf{AM$-H$} & \textbf{AM} \\
+\midrule
+File System           & 31.4\% & 30.8\% & 0\% & 0\% \\
+Network Access        & 24.7\% & 20.2\% & 0\% & 0\% \\
+Code Execution        & 30.6\% & 23.1\% & 0\% & 0\% \\
+Data Exfiltration     &  2.5\% &  2.5\% & 0\% & 0\% \\
+Privilege Escalation  &  0.0\% &  0.0\% & 0\% & 0\% \\
+Tool Chaining         &  5.0\% &  4.0\% & \textbf{2.0\%} & \textbf{0\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent The category breakdown shows where alignment falls short. Privilege escalation shows 0\% VR across \emph{all} conditions including prompt-only---these scenarios test alignment refusal, not authorization enforcement, and are non-discriminating in this benchmark. The tool-chaining row is the critical ablation result, though we note it reflects primarily GLM-5 and GPT-5.4 data (Kimi and MiniMax have near-zero coverage in this category; see Reproducibility above). AM$-H$ permits chain violations that the full authority model blocks. When each individual tool call passes all stateless checks---tool name authorized, arguments within constraints---but the \emph{sequence} crosses an authorization boundary (e.g., reading credentials then sending them via HTTP), only history-aware enforcement catches it. The history parameter $H$ is not a theoretical nicety---it is load-bearing.
+
+\noindent\textbf{Keyword filter performance.} A two-proportion z-test comparing keyword-filter VR(P2) = 15.3\% against prompt-only VR(P2) = 18.0\% yields $z = 1.31$, $p = 0.19$---we cannot reject the null hypothesis of equal violation rates at $\alpha = 0.05$. Per-model rates show keyword filters consistently reduce VR by 1--5 percentage points, suggesting a small real effect that our sample is underpowered to detect. Two mechanisms explain why keyword filters fail to reduce violations: first, deny lists are necessarily incomplete---they enumerate known-bad tool names but cannot enumerate all substitutes. When the model calls \texttt{exec\_shell}, the filter must have \texttt{exec\_shell} in its deny list; if the same list omits \texttt{run\_python}, tool substitution (attack class A6) succeeds. Authority models block both: enforcement is against the authorized set, not an enumerated-unauthorized set. Second, a filter that does not block a call may signal to the model that the call is permitted---a ``false confidence'' effect where filter silence is misread as implicit authorization. The pattern is consistent across categories, though the quantitative gap between keyword-filter and prompt-only violation rates is small.
 
 \subsection{Ablation Design}
 
@@ -795,12 +835,12 @@ We identify four components whose necessity can be established by targeted ablat
 Principal--Agent separation & Capability acquisition implies authority (Corollary~\ref{cor:conflation}) & Proposition~\ref{thm:canmay} \\
 History parameter $H$ & Multi-step boundary crossing via individually-authorized steps & Session-aware constraint \\
 \Escalate{} output & Binary allow/deny forces either over-denial or under-denial & Normative gap handling \\
-Deterministic evaluation & ED $< 1.0$, DAP $> 0.0$ --- same as prompt-only baseline & Propositions~\ref{prop:ed}, \ref{prop:dap}, \ref{prop:external} \\
+Deterministic evaluation & ED $< 1.0$, DAP $> 0.0$ --- same as prompt-only baseline & Propositions~\ref{prop:ed}, \ref{prop:dap}; Conjecture~\ref{conj:external} \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\noindent The tool-chaining category in AuthorityBench specifically tests the history parameter: these scenarios use sequences of individually authorized tool calls that collectively cross an authorization boundary, which bounded-history stateful enforcement can detect but stateless enforcement cannot.
+\noindent The tool-chaining category tests the history parameter $H$ through two scenario types. Four history-critical scenarios (\texttt{chain\_p2\_08}--\texttt{chain\_p3\_10}) present tasks where each individual tool call is authorized---tool name in the allowed set, arguments satisfying constraints---but the \emph{sequence} crosses an authorization boundary (e.g., reading credentials then transmitting them via an authorized HTTP endpoint). The Authority Model ($-H$) ablation removes history tracking: it allows each call individually, producing nonzero VR on these scenarios. The full Authority Model denies the second call after detecting the first in session history. Stateless tool-name and argument-level checks cannot substitute for session-aware enforcement.
 
 
 % ══════════════════════════════════════════════════════════════════════
@@ -813,9 +853,9 @@ Authority models build on five decades of access control, deontic logic, and ins
 
 \subsection{Access Control Theory}
 
-The access control matrix~\citep{lampson1971protection} established that authorization requires a reference monitor---a trusted component that mediates all access to objects. \citet{anderson1972planning} formalized the reference monitor concept: it must be tamper-proof, always invoked, and small enough to verify. Our authority engine (\Cref{fig:architecture}) is a reference monitor for AI agent tool calls.
+The access control matrix~\citep{lampson1971protection} established that authorization requires a reference monitor---a trusted component that mediates all access to objects. \citet{anderson1972planning} formalized the reference monitor concept: it must be tamper-proof, always invoked, and small enough to verify. Our authority engine (\Cref{fig:architecture}) is a reference monitor for AI agent tool calls---a textbook instance of \citeauthor{saltzer1975protection}'s complete mediation principle~\citep{saltzer1975protection}.
 
-\citet{harrison1976protection} proved that the safety question for general access control systems (``can a right ever leak to an unauthorized subject?'') is undecidable. This result directly motivates our restriction to $L_{\mathrm{auth}}$ with bounded history (\Cref{thm:decidability}).
+\citet{harrison1976protection} proved that the safety question for general access control systems (``can a right ever leak to an unauthorized subject?'') is undecidable. This result directly motivates our restriction to $L_{\mathrm{auth}}$ with bounded history (\Cref{thm:decidability}). Bell and LaPadula formalized mandatory access control with the *-property (no write-down) for information flow~\citep{bell1973secure}; \citet{denning1976lattice} generalized this to lattice-based secure information flow. Our tool-chaining attack class A7 is structurally an information flow problem; the bounded history $H$ provides heuristic detection but not formal flow guarantees (see \Cref{sec:discussion}). Clark and Wilson distinguished integrity (well-formed transactions) from access control~\citep{clark1987comparison}, which parallels our separation of authorization (what \May{} happen) from capability (what \Can{} happen).
 
 Role-Based Access Control (RBAC) assigns permissions to roles~\citep{sandhu1996rbac}. Constrained RBAC supports separation of duties and delegation, but roles are statically assigned---inadequate for agents whose authority depends on session context, conversation history, and dynamic delegation. Attribute-Based Access Control (ABAC) evaluates requests against policies over attributes~\citep{nist2014abac}, and is the closest structural ancestor to the $\May$ judgment. The $\May$ function is, structurally, an ABAC evaluation function with three specific extensions for the agentic context: (i)~the principal--agent separation ($P \neq G$) is first-class, not a derived attribute; (ii)~the $\Escalate$ output provides human-in-the-loop semantics absent from standard ABAC; and (iii)~the bounded history $H$ enables session-aware, stateful authorization.
 
@@ -823,7 +863,7 @@ Usage Control (UCON\textsubscript{ABC}), introduced by Park and Sandhu, extends 
 
 Cedar provides a formally verified policy language with decidability guarantees~\citep{cutler2024cedar}. $L_{\mathrm{auth}}$ is a subset of Cedar's expressiveness, extended with session history. Zanzibar implements relationship-based access control at global scale~\citep{pang2019zanzibar} but lacks temporal constraints, budget semantics, and escalation. OPA/Rego offers a general-purpose policy engine but without formal decidability guarantees.
 
-Trust management~\citep{blaze1999policymaker, li2002rt} addresses the distributed credential verification problem: given a certificate chain, does the holder have the right to perform an action? This is structurally related to authority models' delegation chains ($P \neq G$), but trust management operates on cryptographic credentials at infrastructure time rather than on semantic policies at runtime. The key difference: trust management answers ``is this credential valid?'' while authority models answer ``is this action authorized given current context?''---the latter requires the full $\May$ parameter set including history and context.
+Trust management~\citep{blaze1999policymaker, li2003rt} addresses the distributed credential verification problem: given a certificate chain, does the holder have the right to perform an action? This is structurally related to authority models' delegation chains ($P \neq G$), but trust management operates on cryptographic credentials at infrastructure time rather than on semantic policies at runtime. The key difference: trust management answers ``is this credential valid?'' while authority models answer ``is this action authorized given current context?''---the latter requires the full $\May$ parameter set including history and context.
 
 \begin{table}[!ht]
 \centering
@@ -834,16 +874,18 @@ Trust management~\citep{blaze1999policymaker, li2002rt} addresses the distribute
 \toprule
 \textbf{Feature} & \textbf{RBAC} & \textbf{ABAC} & \textbf{Cedar} & \textbf{Zanzibar} & \textbf{OPA} & \textbf{Auth.\ Model} \\
 \midrule
-Principal $\neq$ Agent & -- & $\sim$ & $\sim$ & -- & -- & \checkmark \\
+Principal $\neq$ Agent & -- & $\sim$\textsuperscript{c} & $\sim$ & -- & -- & \checkmark \\
 Escalate output & -- & -- & -- & -- & -- & \checkmark \\
-Session history & -- & $\sim$ & -- & -- & $\sim$ & \checkmark \\
-Budget constraints & -- & $\sim$ & -- & -- & $\sim$ & \checkmark \\
+Session history & -- & $\sim$ & $\sim$\textsuperscript{a} & $\sim$\textsuperscript{d} & $\sim$ & \checkmark \\
+Budget constraints & -- & $\sim$ & $\sim$\textsuperscript{a} & -- & $\sim$ & \checkmark \\
 Delegation chains & RBAC$_2$ & Profile & -- & Relations & -- & \checkmark \\
-Decidability proof & -- & -- & \checkmark & -- & -- & \checkmark \\
+Decidability proof & -- & -- & \checkmark & -- & $\sim$\textsuperscript{b} & \checkmark \\
 Pre-execution enforcement & PEP & PEP & PEP & Check & Admission & SDK/Gateway \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\noindent {\footnotesize \textsuperscript{a}Cedar can reference session-derived attributes if the application provides them in the request context; it lacks a \emph{built-in} session history mechanism but does not prevent the application from implementing one. \textsuperscript{b}Rego forbids recursion and is designed to terminate; formal decidability is a consequence of the restricted evaluation model, though no published proof exists. \textsuperscript{c}ABAC subject attributes can encode \texttt{delegated\_by}, achieving $P \neq G$ as a policy constraint rather than a first-class primitive. \textsuperscript{d}Zanzibar can model session history as relationship tuples, though this is not idiomatic.}
 
 \noindent The contribution is not inventing authorization. It is identifying which extensions existing frameworks need for the agentic setting and proving that those extensions preserve desirable formal properties.
 
@@ -859,11 +901,11 @@ Deontic logic, the logic of obligation, permission, and prohibition, originates 
 
 \citet{kambhampati2024llmmodulo} proved that LLMs cannot reliably self-verify plans and proposed the LLM-Modulo framework: the LLM generates a candidate plan; external \emph{critics} validate it; feedback flows back if invalid; the loop continues until a valid plan is found or the agent escalates. Critics may be \emph{hard} (sound: never approves an invalid plan) or \emph{soft} (probabilistic: may err). The central result is that only hard critics provide correctness guarantees---LLMs cannot function as their own hard critics because self-verification is not verification. Task success alone is insufficient for safe deployment~\citep{kambhampati2024tasksuccess} for the same reason: an agent that succeeds at the task may have violated authorization boundaries in the process.
 
-We extend this framework to authorization. The LLM-Modulo loop for authorization is: the LLM proposes a tool call; the authority engine (\emph{hard critic}) evaluates $\May(P, G, \alpha, R, C, H, \Pi)$; $\Allow$ permits execution, $\Deny$ blocks with policy rationale, $\Escalate$ routes to the human approval queue. The authority engine is a sound hard critic by Proposition~\ref{prop:sound}: it never returns $\Allow$ for an action explicitly prohibited by $\Pi$. Just as an LLM cannot function as its own plan validator, it cannot function as its own authorization critic---Proposition~\ref{thm:canmay} establishes that $\Can$ and $\May$ are defined over independent information sources, meaning the LLM's access to capability information provides no information about authorization status.
+We extend this framework to authorization. The LLM-Modulo loop for authorization is: the LLM proposes a tool call; the authority engine (\emph{hard critic}) evaluates $\May(P, G, \alpha, R, C, H, \Pi)$; $\Allow$ permits execution, $\Deny$ blocks with policy rationale, $\Escalate$ routes to the human approval queue. The authority engine is a policy-sound hard critic (Proposition~\ref{prop:sound}): it never returns $\Allow$ for an action explicitly prohibited by $\Pi$---soundness is relative to the stated policy, not to any absolute notion of correctness. Just as an LLM cannot function as its own plan validator, it cannot function as its own authorization critic---Proposition~\ref{thm:canmay} establishes that $\Can$ and $\May$ are defined over independent information sources, meaning the LLM's access to capability information provides no information about authorization status.
 
-AuthorityBench measures critic type directly. Prompt-only is soft: the LLM ``decides'' to comply, but this decision is framing-sensitive ($\mathrm{ED} = 0.996$, $\mathrm{DAP} = 0.148$). Keyword-filter is also soft: name-matching blocks some calls but misses tool substitution and argument-level violations ($\mathrm{ED} = 0.996$, $\mathrm{DAP} = 0.185$). The authority model is hard: enforcement is external to the LLM's context window, so ambient framing cannot move the outcome ($\mathrm{ED} = 1.000$, $\mathrm{DAP} = 0.000$). ED directly measures critic hardness; Proposition~\ref{prop:external} explains why this is structural, not incidental.
+AuthorityBench measures critic type directly. Prompt-only is soft: the LLM ``decides'' to comply, but this decision is framing-sensitive ($\mathrm{ED} = 0.968$, $\mathrm{DAP} = 0.168$). Keyword-filter is also soft: name-matching blocks some calls but misses tool substitution and argument-level violations ($\mathrm{ED} = 0.972$, $\mathrm{DAP} = 0.151$). The authority model is hard: enforcement is external to the LLM's context window, so ambient framing cannot move the outcome ($\mathrm{ED} = 1.000$, $\mathrm{DAP} = 0.000$). ED directly measures critic hardness; Conjecture~\ref{conj:external} explains why this is structural, not incidental.
 
-Even a well-aligned model (GLM-5) fails at P2. Alignment makes models want to comply; authority models enforce compliance regardless. Neither substitutes for the other: alignment handles P3 (overt override prompts fail on alignment grounds); authority models handle the P2 residual where ambient framing evades refusal. Two layers, two jobs.
+The per-model spread demands direct examination. GPT-5.4 achieves $\mathrm{VR}(P2) = 0.9\%$ under prompt-only conditions---nearly matching the authority model. If frontier alignment continues improving, one might ask whether authority models remain necessary. We think the question is misframed. First, the aggregate $\mathrm{VR}(P2) = 18.0\%$ reflects the population of deployed models, not just the frontier; MiniMax-M2.5 reaches 40.0\%, and organizations cannot guarantee which model will process a given request across vendors, versions, and fine-tunes. Second, 0.9\% is not 0.0\%: at scale (millions of tool calls), even GPT-5.4's residual rate produces thousands of unauthorized actions. Third, alignment provides no \emph{guarantee}---the 0.9\% could shift to 5\% with a model update, a system prompt change, or a more sophisticated P2 framing, because the mechanism is probabilistic. Authority models provide an architectural invariant: $\mathrm{VR} = 0.0\%$ regardless of model, framing, or update cadence. Alignment makes models want to comply; authority models enforce compliance regardless. Neither substitutes for the other: alignment handles P3 (overt override prompts largely fail on alignment grounds); authority models handle the P2 residual where ambient framing evades refusal. Two layers, two jobs.
 
 Agent-SafetyBench evaluates 16 LLM agents across 2,000 test cases with an average safety score of 38.5\%~\citep{zhang2024agentsafetybench}. R-Judge benchmarks safety risk awareness across 162 agent trajectories~\citep{yuan2024rjudge}. OpenAgentSafety reports agents that ``disregard authorization entirely''~\citep{vijayvargiya2025openagentsafety}. ToolEmu finds even the safest agents exhibit severe failures 23.9\% of the time~\citep{ruan2024toolemu}. AgentHarm measures harmfulness of agent actions~\citep{andriushchenko2024agentharm}. MCP-SafetyBench demonstrates that MCP's openness introduces new safety risks~\citep{zong2025mcpsafetybench}. Potham benchmarks adherence to hierarchical safety principles~\citep{potham2025hierarchical}. Commercial LLM agents are vulnerable to simple attacks~\citep{li2025commercialvulnerable}. These benchmarks measure \emph{safety} (harm avoidance) and \emph{compliance} (instruction following), not \emph{authorization} (scope enforcement).
 
@@ -890,7 +932,7 @@ Commercial agents~\citep{li2025commercialvulnerable} & $-$ & $-$ & $-$ & $-$ \\
 \end{tabular}
 \end{table}
 
-\noindent AuthorityBench is the first benchmark to evaluate \emph{authorization compliance} as a distinct property from safety, measuring how enforcement architecture---not model capability or alignment---determines whether unauthorized actions are blocked.
+\noindent AuthorityBench is, to our knowledge, the first benchmark to evaluate \emph{authorization compliance} as a distinct property from safety, measuring how enforcement architecture---not model capability or alignment---determines whether unauthorized actions are blocked.
 
 \subsection{Emerging Agent Governance}
 
@@ -905,9 +947,9 @@ Authority models provide the formal substrate these works presuppose: a decision
 \section{Discussion and Limitations}
 \label{sec:discussion}
 
-\textbf{NL-to-policy reliability.} Natural language policy specification depends on an LLM translation step. This introduces a non-deterministic component upstream of the deterministic engine. Error rates, ambiguity handling, and contradictory policies require explicit design. The determinism guarantee (\Cref{prop:ed}) applies to \emph{evaluation}, not \emph{specification}.
+\textbf{NL-to-policy reliability.} Natural language policy specification depends on an LLM translation step. This introduces a non-deterministic component upstream of the deterministic engine. Error rates, ambiguity handling, and contradictory policies require explicit design. The determinism guarantee (\Cref{prop:ed}) applies to \emph{evaluation}, not \emph{specification}. If the specification problem is intractable in practice---and fifty years of software verification suggests it is hard---then the system may deterministically enforce the wrong policy. Shadow mode (non-blocking evaluation with logging) is designed to mitigate this by enabling policy calibration before enforcement, but the formal analysis of policy specification quality is an open problem. Policy analysis questions---can a given policy ever produce $\Allow$ for action $\alpha$? Is policy $\Pi_1$ more restrictive than $\Pi_2$?---are decidable for $L_{\mathrm{auth}}$ by exhaustive enumeration of the finite attribute space but may require specialized tooling for practical use.
 
-\textbf{Policy completeness.} Authority models enforce stated policies. They cannot prevent violations of unstated policies. The guarantee is: if a policy exists, enforcement is deterministic. If no policy applies, the default decision (configurable; we recommend $\Deny$) takes effect.
+\textbf{Policy completeness.} Authority models enforce stated policies. They cannot prevent violations of unstated policies. The guarantee is: if a policy exists, enforcement is deterministic. If no policy applies, the default decision (configurable; we recommend $\Deny$) takes effect. This limitation is fundamental, not incidental: correct policy specification is at least as hard as correct program specification, and the formal verification community's experience with specification completeness applies directly. We do not claim to solve this problem; we claim to separate it cleanly from the enforcement problem, so that each can be addressed independently.
 
 \textbf{Principal-agent collusion.} The threat model assumes honest principals. If the principal and agent collude to circumvent policies, authority models cannot help---the principal can simply grant broader scope.
 
@@ -915,13 +957,17 @@ Authority models provide the formal substrate these works presuppose: a decision
 
 \textbf{Decidability boundary.} $\May$ with unbounded $H$ is undecidable (\Cref{thm:decidability}). Applications requiring unbounded history reasoning---cross-session correlation, long-horizon planning constraints---are outside $L_{\mathrm{auth}}$ and require approximation or human review.
 
-\textbf{Bypass via non-tool-call actions.} Authority enforcement at the action boundary assumes all consequential agent actions pass through tool calls. Agents that generate executable code, compose tool calls into atomic plans, or communicate through channels outside the tool framework may bypass enforcement. This is a scope limitation, not a design flaw: as tool-use protocols mature, the action boundary becomes more comprehensive. Attack class A8 (exfiltration bypass, \Cref{tab:taxonomy}) falls outside the current enforcement boundary.
+\textbf{Bypass via non-tool-call actions.} Authority enforcement at the action boundary assumes all consequential agent actions pass through tool calls. Agents that generate executable code, compose tool calls into atomic plans, or communicate through channels outside the tool framework may bypass enforcement. Code-generation agents embed consequential actions \emph{within} authorized tool arguments: the tool call is \texttt{write\_file}, which is authorized, but the file content may contain arbitrary code that executes arbitrary actions when run. Authority models check the tool call envelope; they cannot check semantic content. This is a scope limitation, not a design flaw: as tool-use protocols mature, the action boundary becomes more complete. Attack class A8 (exfiltration bypass, \Cref{tab:taxonomy}) falls outside the current enforcement boundary.
 
-\textbf{Construct gap between formalism and benchmark.} The formal $\May$ judgment has seven parameters; AuthorityBench tests a projection: tool-name allowlists and path-prefix constraints. This is deliberate---the benchmark isolates whether structural enforcement outperforms prompt-based and keyword-based approaches, which it does by construction. Closing the gap requires adversarial scenarios targeting session-budget constraints, delegation scope restrictions, and history-conditioned policies; these are the next tier of benchmarks to build.
+\textbf{Information flow.} Attack classes A7 (tool chaining) and A8 (exfiltration) are fundamentally information flow problems. The history parameter $H$ provides a heuristic over discrete tool-call events, but it is not a formal information flow analysis. Bell-LaPadula's *-property~\citep{bell1973secure}, Denning's lattice model~\citep{denning1976lattice}, and decentralized information flow control all address transitive data movement with stronger guarantees than bounded-window history. Integrating information flow control with the authority model---for example, tagging data provenance through tool-call chains---is a natural extension that would strengthen A7/A8 coverage.
 
-\textbf{Enforcement--usability tradeoff.} Authority models eliminate violations at the cost of potential over-denial. The False Denial Rate (FDR)---the fraction of legitimate requests blocked by the policy---is the other side of the ED/DAP tradeoff. A system with ED $= 1.0$ and FDR $= 0.8$ is useless in practice. AuthorityBench measures FDR from P1 benign scenarios where the policy should permit the request; the authority model achieves FDR $= 0.0$ on correctly-specified policies, as benign requests satisfy the authorization constraints by construction. However, incomplete policies (missing rules, over-broad deny conditions) introduce false denials. Policy completeness is a deployment concern, not a theoretical one.
+\textbf{Construct gap between formalism and benchmark.} The formal $\May$ judgment has seven parameters; AuthorityBench tests a projection: tool-name allowlists, path-prefix constraints, and history-conditioned chain blocking. The v2 benchmark extends coverage to the history parameter $H$ through history-critical tool-chaining scenarios and the stateless ablation. However, budget constraints, temporal constraints, and full delegation chains are theorized but not benchmarked. Closing the remaining gap requires adversarial scenarios targeting session-budget exhaustion, delegation scope restrictions, and cross-principal authorization; these are the next tier of benchmarks to build.
 
-\textbf{Alignment and authorization are complementary, not substitutable.} GLM-5 refuses all P3 adversarial prompts on alignment grounds---$\mathrm{VR}(P3) = 0.0\%$ for all conditions. Alignment is doing its job at P3. The gap appears at P2, where ambient framing makes a violation seem contextually natural and alignment does not refuse. The P2 gap persists because ambient social pressure sits below the alignment refusal threshold by design---DAP captures exactly this ($0.148$ prompt-only, $0.185$ keyword filter, $0.000$ authority model). Testing models with weaker alignment would reveal P3 differentiation as well; the P2 differential should be stable across model families since it is a property of the framing technique, not of model strength.
+\textbf{Baseline comparison scope.} AuthorityBench compares against prompt-only and keyword-filter conditions, both intentionally weak baselines. A stronger comparison---an LLM-as-judge condition where a second model evaluates each proposed tool call against the authorization policy---would test whether the externality benefit requires deterministic code or merely requires separating the proposer from the verifier. Similarly, chain-of-thought authorization reasoning and models fine-tuned for authorization following are untested. The current comparison establishes that simple prompting and simple filtering are insufficient; it does not establish that \emph{only} deterministic external enforcement can close the gap. Conjecture~\ref{conj:external} addresses this question, but the experimental design does not test it directly.
+
+\textbf{Enforcement--usability tradeoff.} Authority models eliminate violations at the cost of potential over-denial. The False Denial Rate (FDR)---the fraction of legitimate requests blocked by the policy---is the other side of the ED/DAP tradeoff. A system with ED $= 1.0$ and FDR $= 0.8$ is useless in practice. AuthorityBench measures FDR from P1 benign scenarios where the policy should permit the request; the authority model achieves FDR $= 0.0$ on correctly-specified policies, as benign requests satisfy the authorization constraints by construction. However, incomplete policies (missing rules, over-broad deny conditions) introduce false denials in ways AuthorityBench does not measure. In any real deployment, policies will be under-specified or over-broad, and FDR will be nonzero.
+
+\textbf{Alignment and authorization are complementary, not substitutable.} All four models largely refuse overt P3 adversarial prompts on alignment grounds---$\mathrm{VR}(P3) = 1.7\%$ prompt-only, falling to $0.0\%$ under authority model enforcement. Alignment is doing most of the work at P3. The gap appears at P2, where ambient framing makes a violation seem contextually natural and alignment does not refuse. The P2 gap persists across all four model families because ambient social pressure sits below the alignment refusal threshold by design---DAP captures exactly this. The cross-model stability of the P2 differential confirms it is a property of the framing technique, not of individual model strength or alignment training.
 
 
 % ══════════════════════════════════════════════════════════════════════
@@ -930,17 +976,20 @@ Authority models provide the formal substrate these works presuppose: a decision
 \section{Conclusion}
 \label{sec:conclusion}
 
-We defined authority models, proved three properties, and showed that deterministic policy enforcement achieves $\mathrm{ED} = 1.0$ and $\mathrm{DAP} = 0.0$ by construction. Empirically across 450 trials on AuthorityBench (50 scenarios $\times$ 3 conditions $\times$ 3 trials, GLM-5), authority models eliminate authorization violations at all pressure levels ($\mathrm{VR}(P2) = 0.0\%$, $\mathrm{ED} = 1.000$), while prompt-only baselines reach $\mathrm{VR}(P2) = 14.8\%$ and keyword-filter guardrails reach $\mathrm{VR}(P2) = 18.5\%$ under ambient social pressure. The Can/May separation is not a feature---it is an architectural requirement for governable AI agents.
+We defined authority models, proved three properties (Can/May Separation, Deny-Monotonicity, Escalation Monotonicity), and showed by construction that deterministic external enforcement achieves $\mathrm{ED} = 1.0$ and $\mathrm{DAP} = 0.0$---this is an architectural property, not an empirical discovery. The empirical contribution is measuring how alternatives degrade. Across 6{,}907 trials on AuthorityBench with four LLMs from two provider ecosystems, prompt-only baselines permit unauthorized actions at rates ranging from 1\% (GPT-5.4) to 40\% (MiniMax-M2.5) under ambient social pressure, with an aggregate of 18.0\%. A formal test finds no significant difference between keyword-filter and prompt-only conditions ($z = 1.31$, $p = 0.19$). A stateless ablation removing the history parameter $H$ admits violations on tool-chaining sequences that the full model blocks. The Can/May separation is not a feature---it is an architectural requirement for governable AI agents.
 
 The pattern is familiar. Every major computing platform has developed a trust layer: operating systems developed file permissions and user isolation; the web developed TLS, OAuth, and CORS; cloud computing developed IAM, service accounts, and policy engines; mobile platforms developed app permissions and capability sandboxes. In each case, the trust layer emerged not when the platform was invented but when the platform became powerful enough that unmediated access became dangerous. AI agents are at that inflection point now. The trust layer is not optional infrastructure for some future version of AI agents---it is the missing component of every agent deployment today.
 
-Two findings from AuthorityBench deserve special emphasis. First, keyword-filter guardrails trend worse than prompt-only constraints (18.5\% vs.\ 14.8\% $\mathrm{VR}(P2)$; directional, $p=0.80$, $n=54$): incomplete deny lists fail when models substitute authorized tools to accomplish unauthorized goals, and filter silence is misread as implicit authorization---a false confidence effect that, when the mechanism triggers, raises violation rates above the unguarded baseline. Second, well-aligned models and authority models are complements, not substitutes: alignment handles overt adversarial attacks; authority models handle the residual violations that occur when models are persuaded by ambient framing that a violation is contextually appropriate. Neither suffices alone.
+Keyword-filter guardrails did not significantly outperform prompt-only baselines on our sample ($z = 1.31$, $p = 0.19$): incomplete deny lists fail when models substitute tools, and filter silence can be misread as implicit authorization. Across all four models, any enforcement mechanism routing decisions through the LLM's inference or depending on tool-name enumeration fails to achieve $\mathrm{ED} = 1.0$. Alignment and authority models are complements, not substitutes: alignment handles overt adversarial attacks; authority models handle the residual violations that occur when models are persuaded by ambient framing that a violation is contextually appropriate. The externality of enforcement---not the strength of alignment---is the discriminating variable.
 
-The regulatory trajectory reinforces the technical case. The EU AI Act (Articles 9--13) and the NIST AI RMF both require demonstrable risk governance for high-risk AI systems. Authority models provide what these frameworks presuppose: policies are auditable artifacts, decisions are logged with attributable principals, escalation records form a human-review chain. Prompt-only constraints satisfy none of these requirements---stochastic compliance is not governance.
+The regulatory trajectory reinforces the technical case. The EU AI Act (Articles 9--13) and the NIST AI RMF both require demonstrable risk governance for high-risk AI systems. Authority models provide what these frameworks presuppose: policies are auditable artifacts, decisions are logged with attributable principals, escalation records form a human-review chain. Prompt-only constraints satisfy none of these requirements---stochastic compliance is not governance. We note, however, that the same formal properties that make authority models effective for security make them effective instruments of control: a deterministic enforcement engine that blocks tool calls based on content-category policies is formally indistinguishable from a censorship engine. Who audits the policies, who has standing to challenge a denial, and what accountability mechanisms govern the governance layer are questions that the formal framework does not answer. Authority models provide the enforcement substrate; the governance of that substrate---the institutional design problem---requires the policy analysis, auditing, and contestation infrastructure that this paper identifies as future work.
 
 The long-term challenge is not aligning isolated agents but building institutional structure for machine agency~\citep{chan2025infrastructure, pierucci2026institutionalai}. As agents move from generating text to exercising power---scheduling, purchasing, modifying, communicating, committing---the decisive question is whether their actions are properly constituted: attributable to a principal, within delegated scope, satisfying contextual constraints, and subject to review and revocation. Alignment answers ``would the model want to do this?'' Authorization answers ``is the model permitted to do this?'' Both questions are necessary. Only one has been formalized.
 
 Capability is not authority. Feasibility is not legitimacy. \Can{} is not \May{}.
+
+\vspace{8pt}
+\noindent\textbf{Ethics and Disclosure.} The authors are affiliated with Plaw, Inc., which develops Veto, the reference implementation evaluated in this paper. The formalism, benchmark design, and all reported results are independent of the commercial product. AuthorityBench scenarios use simulated tool execution and pose no safety risk. All benchmark code and scenario files are publicly available.
 
 
 % ══════════════════════════════════════════════════════════════════════
