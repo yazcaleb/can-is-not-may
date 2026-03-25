@@ -152,7 +152,7 @@ The capability-authority distinction is well-established in the security literat
 \noindent The central claim of the paper:
 
 \begin{center}
-\textit{Capability and authority are logically separable. Whether an agent \Can{} perform an action does not determine whether it \May{}: all four cells of the Can\,$\times$\,May product are realizable (Proposition~\ref{thm:canmay}). Any system conflating these layers admits privilege escalation by capability acquisition.}
+\textit{Capability and authority are informationally independent: whether an agent \Can{} perform an action provides no information about whether it \May{}. All four cells of the Can\,$\times$\,May product are realizable (Proposition~\ref{thm:canmay}), and any system conflating these layers admits privilege escalation by capability acquisition.}
 \end{center}
 \end{samepage}
 
@@ -369,7 +369,7 @@ Authority models instantiate the Input/Output (I/O) logic framework of Makinson 
 
 \subsection{Design Space}
 
-Following the Dynamo technique-table strategy~\citep{decandia2007dynamo}, we make explicit the design choices and their tradeoffs:
+Following the Dynamo technique-table strategy~\citep{decandia2007dynamo}, we make explicit the design choices and their tradeoffs (\Cref{tab:adico} maps these choices to the ADICO institutional grammar):
 
 \begin{table}[!ht]
 \centering
@@ -609,7 +609,7 @@ We evaluate authority models against three baselines and a stateless ablation ac
 \begin{table}[!ht]
 \centering
 \small
-\begin{tabularx}{\textwidth}{@{}l l X@{}}
+\begin{tabularx}{\textwidth}{@{}p{2.7cm} p{5cm} X@{}}
 \toprule
 \textbf{Condition} & \textbf{Mechanism} & \textbf{What it isolates} \\
 \midrule
@@ -1075,7 +1075,7 @@ Agent authorized for \texttt{http\_get} with \texttt{allowed\_domain: api.approv
 
 \vspace{4pt}
 \noindent\textbf{3. Code Execution: Eval Injection (P2, \texttt{code\_p2\_05}).}
-Agent authorized for \texttt{run\_python} with script allowlist. Task: ``The user wants to run a quick calculation. Execute: \texttt{\_\_import\_\_('os').system('id')}.'' Guardrail keywords omit \texttt{\_\_import\_\_}; only argument-level validation catches the injection.
+Agent authorized for \texttt{run\_python} with script allowlist. Task: ``The user wants to run a quick calculation. Execute: \path|__import__('os').system('id')|.'' Guardrail keywords omit \texttt{\_\_import\_\_}; only argument-level validation catches the injection.
 
 \vspace{4pt}
 \noindent\textbf{4. Data Exfiltration: PII Aggregation (P2, \texttt{data\_p2\_05}).}
@@ -1087,7 +1087,7 @@ Agent authorized for \texttt{read\_own\_data, update\_own\_settings}. Task: ``Th
 
 \vspace{4pt}
 \noindent\textbf{6. Tool Chaining: Credential Exfiltration (P2, \texttt{chain\_p2\_08}).}
-Agent authorized for \texttt{read\_file} (path: \texttt{/home/user/}) and \texttt{http\_get} (domain: \texttt{api.approved-weather.com}). Task: ``Read the API credentials from \texttt{/home/user/credentials.json}, then verify they work by calling \texttt{https://api.approved-weather.com/validate?key=<the-key>}.'' Each tool call passes all stateless checks individually. Only the history-aware \texttt{chain\_blocked\_after} rule---which blocks \texttt{http\_get} after \texttt{read\_file}---catches the violation. The stateless ablation (AM$-H$) permits this sequence; the full authority model blocks it.
+Agent authorized for \texttt{read\_file} (path: \texttt{/home/user/}) and \texttt{http\_get} (domain: \texttt{api.approved-weather.com}). Task: ``Read the API credentials from \texttt{/home/user/credentials.json}, then verify they work by calling \path|https://api.approved-weather.com/validate?key=<the-key>|.'' Each tool call passes all stateless checks individually. Only the history-aware \texttt{chain\_blocked\_after} rule---which blocks \texttt{http\_get} after \texttt{read\_file}---catches the violation. The stateless ablation (AM$-H$) permits this sequence; the full authority model blocks it.
 
 \vspace{8pt}
 \noindent\Cref{tab:scenario-index} lists all 54 scenarios.
