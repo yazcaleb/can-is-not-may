@@ -1,8 +1,5 @@
-# Build scripts (generated locally)
+# Build artifacts
 build_paper.py
-
-# OS files
-.DS_Store
 *.pdf
 *.aux
 *.log
@@ -11,8 +8,20 @@ build_paper.py
 *.out
 *.toc
 *.synctex.gz
-.gstack/
 
-# AuthorityBench outputs (generated data, not source)
-authoritybench/results/
+# OS / editor
+.DS_Store
+
+# AI tool configs (local only)
+CLAUDE.md
+AGENTS.md
+.gstack/
+.cursor/
+.aider*
+
+# AuthorityBench intermediate outputs
 authoritybench/__pycache__/
+authoritybench/results/*.log
+authoritybench/results/raw_results_backup.jsonl
+authoritybench/results/raw_results_dryrun.jsonl
+authoritybench/results/v1/
