@@ -39,5 +39,4 @@
 > **Can is not May.** The scientific object of governable agency is not only competent action, but legitimate action.
 
 ## Contact
-
-[Add your email/details here]
+ycelebi@asu.edu
