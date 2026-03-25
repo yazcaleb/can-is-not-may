@@ -66,18 +66,13 @@
 \newtheorem{conjecture}[definition]{Conjecture}
 
 % ── Custom commands ───────────────────────────────────────────────────
-\newcommand{\May}{\textsc{May}}
-\newcommand{\Can}{\textsc{Can}}
-\newcommand{\Allow}{\textsc{Allow}}
-\newcommand{\Deny}{\textsc{Deny}}
-\newcommand{\Escalate}{\textsc{Escalate}}
+\newcommand{\termlabel}[1]{\ifmmode\mathsf{#1}\else\textsf{#1}\fi}
+\newcommand{\May}{\termlabel{May}}
+\newcommand{\Can}{\termlabel{Can}}
+\newcommand{\Allow}{\termlabel{Allow}}
+\newcommand{\Deny}{\termlabel{Deny}}
+\newcommand{\Escalate}{\termlabel{Escalate}}
 \newcommand{\authoritymodel}{\textit{authority model}}
-
-% ── Font shape substitutions (lmodern lacks scit and bx+sc) ───────────
-\AtBeginDocument{%
-  \DeclareFontShape{T1}{lmr}{m}{scit}{<->ssub * lmr/m/scsl}{}%
-  \DeclareFontShape{T1}{lmr}{bx}{sc}{<->ssub * lmr/bx/n}{}%
-}
 
 % ── Spacing ───────────────────────────────────────────────────────────
 \setstretch{1.15}
