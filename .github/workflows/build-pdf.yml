@@ -1,0 +1,40 @@
+name: Build PDF
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile LaTeX
+        uses: xu-cheng/latex-action@v3
+        with:
+          root_file: main.tex
+
+      - name: Rename PDF
+        run: mv main.pdf can_is_not_may.pdf
+
+      - name: Update release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: latest
+          name: "Can Is Not May — Latest PDF"
+          body: |
+            Auto-compiled from [`main`](https://github.com/${{ github.repository }}/tree/main) at `${{ github.sha }}`.
+
+            Download **can_is_not_may.pdf** below.
+          artifacts: can_is_not_may.pdf
+          artifactContentType: application/pdf
+          artifactErrorsFailBuild: true
+          allowUpdates: true
+          replacesArtifacts: true
+          makeLatest: true
+          token: ${{ secrets.GITHUB_TOKEN }}

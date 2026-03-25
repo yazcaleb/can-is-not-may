@@ -6,9 +6,11 @@
 
 ## Paper
 
+[**Download PDF**](https://github.com/yazcaleb/can-is-not-may/releases/latest) (auto-compiled from `main` on every push)
+
 - **Source**: [`main.tex`](main.tex) (~17 pages, 9 sections + appendices)
 - **Bibliography**: [`references.bib`](references.bib) (28 citations with DOIs)
-- **Build**: `pdflatex main.tex && bibtex main && pdflatex main.tex && pdflatex main.tex`
+- **Local build**: `pdflatex main.tex && bibtex main && pdflatex main.tex && pdflatex main.tex`
 
 ## AuthorityBench
 
@@ -127,3 +129,7 @@ python authoritybench/generate_table.py
 ## License
 
 Paper (`main.tex`, `references.bib`): [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/). Code (`authoritybench/`): [MIT](LICENSE).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
