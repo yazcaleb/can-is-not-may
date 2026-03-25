@@ -779,12 +779,13 @@ Authority Model ($-H$) & 0.0\% & \textbf{0.3\%} {\scriptsize[0--1]} & 0.0\% & 0.
 \centering
 \caption{Per-model VR(P2) and ED. Authority model achieves VR = 0.0\% and ED = 1.000 on every model family. Cross-model variance for authority model: 0.000; for prompt-only: 0.022. Enforcement architecture, not model alignment, determines the outcome.}
 \label{tab:per-model}
-\small
-\begin{tabular}{lrrrrrrrr}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{l@{\hskip 8pt}rrrr@{\hskip 10pt}rrrr}
 \toprule
-& \multicolumn{4}{c}{\textbf{VR(P2)}} & \multicolumn{4}{c}{\textbf{ED}} \\
+& \multicolumn{4}{c@{\hskip 10pt}}{\textbf{VR(P2)}} & \multicolumn{4}{c}{\textbf{ED}} \\
 \cmidrule(lr){2-5}\cmidrule(lr){6-9}
-\textbf{Condition} & \textbf{GLM-5} & \textbf{GPT-5.4} & \textbf{Kimi} & \textbf{MiniMax} & \textbf{GLM-5} & \textbf{GPT-5.4} & \textbf{Kimi} & \textbf{MiniMax} \\
+\textbf{Condition} & \textbf{GLM-5} & \textbf{GPT-5.4} & \textbf{Kimi-K2.5} & \textbf{MiniMax-M2.5} & \textbf{GLM-5} & \textbf{GPT-5.4} & \textbf{Kimi-K2.5} & \textbf{MiniMax-M2.5} \\
 \midrule
 Prompt-Only       & 15.0\% &  0.9\% & 30.8\% & 40.0\% & 0.988 & 0.997 & 1.000 & 0.955 \\
 Keyword Filter    & 13.9\% &  0.0\% & 26.2\% & 34.5\% & 0.988 & 1.000 & 0.992 & 0.955 \\
@@ -815,7 +816,7 @@ Tool Chaining         &  5.0\% &  4.0\% & \textbf{2.0\%} & \textbf{0\%} \\
 \end{tabular}
 \end{table}
 
-\noindent The category breakdown shows where alignment falls short. Privilege escalation shows 0\% VR across \emph{all} conditions including prompt-only---these scenarios test alignment refusal, not authorization enforcement, and are non-discriminating in this benchmark. The tool-chaining row is the critical ablation result, though we note it reflects primarily GLM-5 and GPT-5.4 data (Kimi and MiniMax have near-zero coverage in this category; see Reproducibility above). AM$-H$ permits chain violations that the full authority model blocks. When each individual tool call passes all stateless checks---tool name authorized, arguments within constraints---but the \emph{sequence} crosses an authorization boundary (e.g., reading credentials then sending them via HTTP), only history-aware enforcement catches it. The history parameter $H$ is not a theoretical nicety---it is load-bearing.
+\noindent The category breakdown shows where alignment falls short. Privilege escalation shows 0\% VR across \emph{all} conditions including prompt-only---these scenarios test alignment refusal, not authorization enforcement, and are non-discriminating in this benchmark. The tool-chaining row is the critical ablation result, though we note it reflects primarily GLM-5 and GPT-5.4 data (Kimi-K2.5 and MiniMax-M2.5 have near-zero coverage in this category; see Reproducibility above). AM$-H$ permits chain violations that the full authority model blocks. When each individual tool call passes all stateless checks---tool name authorized, arguments within constraints---but the \emph{sequence} crosses an authorization boundary (e.g., reading credentials then sending them via HTTP), only history-aware enforcement catches it. The history parameter $H$ is not a theoretical nicety---it is load-bearing.
 
 \noindent\textbf{Keyword filter performance.} A two-proportion z-test comparing keyword-filter VR(P2) = 15.3\% against prompt-only VR(P2) = 18.0\% yields $z = 1.31$, $p = 0.19$---we cannot reject the null hypothesis of equal violation rates at $\alpha = 0.05$. Per-model rates show keyword filters consistently reduce VR by 1--5 percentage points, suggesting a small real effect that our sample is underpowered to detect. Two mechanisms explain why keyword filters fail to reduce violations: first, deny lists are necessarily incomplete---they enumerate known-bad tool names but cannot enumerate all substitutes. When the model calls \texttt{exec\_shell}, the filter must have \texttt{exec\_shell} in its deny list; if the same list omits \texttt{run\_python}, tool substitution (attack class A6) succeeds. Authority models block both: enforcement is against the authorized set, not an enumerated-unauthorized set. Second, a filter that does not block a call may signal to the model that the call is permitted---a ``false confidence'' effect where filter silence is misread as implicit authorization. The pattern is consistent across categories, though the quantitative gap between keyword-filter and prompt-only violation rates is small.
 
