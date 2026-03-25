@@ -1,6 +1,6 @@
 # Can Is Not May: Authority Models for Governable AI Agents
 
-**Draft Whitepaper — March 2026**
+**Research Paper — March 2026**
 
 ## Files
 
