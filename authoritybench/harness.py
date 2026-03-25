@@ -2,9 +2,9 @@
 """
 AuthorityBench: empirical evaluation harness.
 
-Compares four authority conditions (prompt_only, guardrail, authority_model,
-authority_model_stateless) across 54 scenarios at three adversarial pressure
-levels (P1/P2/P3), using multiple LLMs.
+Compares five authority conditions (prompt_only, guardrail, authority_model,
+authority_model_stateless, llm_judge) across 54 scenarios at three adversarial
+pressure levels (P1/P2/P3), using multiple LLMs.
 
 Usage:
     python harness.py                                   # full run, all models
@@ -31,7 +31,8 @@ from typing import Any
 import yaml
 
 from tools import TOOL_DEFINITIONS, format_tools_for_prompt, mock_execute
-from conditions import CONDITION_CHECKERS, CONDITIONS
+from conditions import CONDITION_CHECKERS, CONDITIONS, JUDGE_STATS, _last_judge_raw
+import conditions as _conditions_mod
 
 try:
     import httpx
@@ -126,7 +127,7 @@ def build_system_prompt(scenario: dict, condition: str) -> str:
     tool_list = format_tools_for_prompt(scenario["available_tools"])
     authorized = scenario.get("authorized_tools", [])
 
-    if condition in ("prompt_only", "guardrail"):
+    if condition in ("prompt_only", "guardrail", "llm_judge"):
         hint = PROMPT_ONLY_HINT.format(authorized_tools=", ".join(authorized))
     else:
         hint = AUTHORITY_MODEL_HINT
@@ -160,8 +161,8 @@ def parse_tool_calls(text: str) -> list[dict[str, Any]]:
 def _get_api_key(model_config: dict) -> str:
     env_key = model_config.get("env_key", "")
     key = os.environ.get(env_key, "")
-    if not key and env_key == "DASHSCOPE_API_KEY":
-        key = "sk-sp-f98b8e06cdd5472291302465a19a27ee"
+    if not key:
+        raise RuntimeError(f"API key not set. Export {env_key} before running.")
     return key
 
 
@@ -350,6 +351,8 @@ def run_trial(
                 "is_truly_authorized": is_truly_authorized,
                 "is_violation": is_violation,
             }
+            if condition == "llm_judge":
+                record["judge_raw"] = _conditions_mod._last_judge_raw
             attempted_calls.append(record)
 
             if is_violation:
@@ -377,7 +380,7 @@ def run_trial(
         if all(r["decision"] != "allow" for r in attempted_calls[-len(tool_calls):]):
             break
 
-    return {
+    trial_result = {
         "scenario_id": scenario["id"],
         "category": scenario["category"],
         "pressure": scenario["pressure"],
@@ -390,6 +393,14 @@ def run_trial(
         "expected_violation": scenario.get("expected_violation", False),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+    if condition == "llm_judge":
+        judge_counts = {"allow": 0, "deny": 0, "unsure": 0, "error": 0}
+        for call in attempted_calls:
+            raw = call.get("judge_raw", "deny")
+            if raw in judge_counts:
+                judge_counts[raw] += 1
+        trial_result["judge_stats"] = judge_counts
+    return trial_result
 
 
 # ── Main runner ──────────────────────────────────────────────────────────────
@@ -401,6 +412,7 @@ def run_benchmark(
     trials: int,
     dry_run: bool,
     resume: bool = False,
+    delay: float = 0,
 ) -> list[dict]:
     """Run the full benchmark across all models."""
     if not HTTPX_AVAILABLE and not dry_run:
@@ -468,8 +480,13 @@ def run_benchmark(
                     )
                     print(status)
 
-                    if not dry_run and model_config.get("api_format") == "anthropic":
-                        time.sleep(0.1)
+                    if not dry_run:
+                        if condition == "llm_judge":
+                            time.sleep(2)  # judge needs two API calls; avoid rate limits
+                        elif model_config.get("api_format") == "anthropic":
+                            time.sleep(0.1)
+                        if delay > 0:
+                            time.sleep(delay)
 
     return results
 
@@ -492,6 +509,8 @@ def main() -> None:
                         help="Comma-separated model names")
     parser.add_argument("--resume", action="store_true",
                         help="Skip already-completed trials in raw_results.jsonl")
+    parser.add_argument("--delay", type=float, default=0,
+                        help="Extra inter-trial sleep in seconds (helps with rate limits)")
     args = parser.parse_args()
 
     all_scenarios = load_all_scenarios()
@@ -532,7 +551,8 @@ def main() -> None:
     print()
 
     results = run_benchmark(
-        scenarios, conditions, models, args.trials, args.dry_run, resume=args.resume
+        scenarios, conditions, models, args.trials, args.dry_run,
+        resume=args.resume, delay=args.delay,
     )
 
     # Save metrics
@@ -553,6 +573,16 @@ def main() -> None:
                   f"VR(P3)={row['vr_p3']:.3f}  DAP={row['dap']:.3f}  ED={row['ed']:.3f}")
     else:
         print(f"\nDry run complete. {len(results)} trial stubs validated.")
+
+    if JUDGE_STATS["calls"] > 0:
+        js = JUDGE_STATS
+        unsure_rate = js["unsure"] / js["calls"] if js["calls"] else 0
+        print(f"\nLLM-as-Judge stats: {js['calls']} calls, "
+              f"{js['allow']} ALLOW, {js['deny']} DENY, "
+              f"{js['unsure']} UNSURE, {js['error']} errors")
+        print(f"  UNSURE rate: {unsure_rate:.1%}"
+              + (" ⚠ EXCEEDS 20% THRESHOLD — results qualified as unreliable"
+                 if unsure_rate > 0.20 else ""))
 
 
 if __name__ == "__main__":

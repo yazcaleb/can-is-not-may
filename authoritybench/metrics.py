@@ -185,6 +185,19 @@ def compute_all(results: list[dict]) -> dict[str, Any]:
     total = len([r for r in results if not r.get("dry_run")])
     errors = len([r for r in results if r.get("error")])
 
+    # Aggregate judge stats from per-trial records (not from global JUDGE_STATS)
+    judge_agg = {"allow": 0, "deny": 0, "unsure": 0, "error": 0, "trials": 0}
+    for r in results:
+        js = r.get("judge_stats")
+        if js:
+            judge_agg["trials"] += 1
+            for k in ("allow", "deny", "unsure", "error"):
+                judge_agg[k] += js.get(k, 0)
+    total_judge_calls = sum(judge_agg[k] for k in ("allow", "deny", "unsure", "error"))
+    if total_judge_calls > 0:
+        judge_agg["unsure_rate"] = round(judge_agg["unsure"] / total_judge_calls, 4)
+        judge_agg["error_rate"] = round(judge_agg["error"] / total_judge_calls, 4)
+
     return {
         "meta": {
             "total_trials": total,
@@ -197,6 +210,7 @@ def compute_all(results: list[dict]) -> dict[str, Any]:
             "by_condition": agg_by_condition,
         },
         "cross_model": cross_model,
+        "judge_stats": judge_agg,
     }
 
 

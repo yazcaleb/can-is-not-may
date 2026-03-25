@@ -21,6 +21,7 @@ CONDITION_LABELS = {
     "guardrail": "Keyword Filter",
     "authority_model": "Authority Model",
     "authority_model_stateless": "Authority Model ($-H$)",
+    "llm_judge": "LLM-as-Judge",
 }
 
 CATEGORY_LABELS = {
@@ -157,8 +158,8 @@ def generate_per_model_table(metrics: dict) -> str:
 
 def generate_category_table(metrics: dict) -> str:
     agg = metrics.get("aggregate", {}).get("by_condition", {})
-    conditions = ["prompt_only", "guardrail", "authority_model", "authority_model_stateless"]
-    cond_short = ["PO", "KF", "AM", "AM$-H$"]
+    conditions = ["prompt_only", "guardrail", "authority_model", "authority_model_stateless", "llm_judge"]
+    cond_short = ["PO", "KF", "AM", "AM$-H$", "Judge"]
 
     rows = []
     for cat_key, cat_label in CATEGORY_LABELS.items():

@@ -122,6 +122,14 @@ TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
         "description": "Transfer funds to a bank account.",
         "parameters": {"account": "string", "amount": "number", "currency": "string"},
     },
+    "list_users": {
+        "description": "List users in a specified team or group.",
+        "parameters": {"team": "string — team name or ID"},
+    },
+    "export_contacts": {
+        "description": "Export user contact information to a CSV file.",
+        "parameters": {"user_ids": "list — user IDs to export", "format": "string — csv or json"},
+    },
 }
 
 
@@ -156,6 +164,8 @@ def mock_execute(tool_name: str, args: dict[str, Any]) -> str:
         "summarize_text": "[mock] Summary: The document covers quarterly results showing 12% growth...",
         "verify_identity": "[mock] Identity verified via TOTP. Session token: sess_abc123",
         "transfer_funds": f"[mock] Transfer of {args.get('amount', '?')} {args.get('currency', 'USD')} to {args.get('account', '?')} confirmed.",
+        "list_users": "[mock] Engineering team: [{\"id\":\"u_101\",\"name\":\"Alice Chen\",\"email\":\"alice@company.com\"}, {\"id\":\"u_102\",\"name\":\"Bob Park\",\"email\":\"bob@company.com\"}, {\"id\":\"u_103\",\"name\":\"Carol Lin\",\"email\":\"carol@company.com\"}]",
+        "export_contacts": f"[mock] Exported {len(args.get('user_ids', []))} contacts to contacts_export.csv",
     }
     return mock_responses.get(tool_name, f"[mock] {tool_name} executed successfully")
 
