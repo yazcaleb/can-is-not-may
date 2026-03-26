@@ -98,7 +98,7 @@ python authoritybench/metrics.py
 python authoritybench/generate_table.py
 ```
 
-**API keys**: `ANTHROPIC_API_KEY` for GPT-5.4 (via OpenRouter), `DASHSCOPE_API_KEY` for GLM-5, Kimi-K2.5, MiniMax-M2.5 (via DashScope).
+**API keys**: `DASHSCOPE_API_KEY` for GLM-5, Kimi-K2.5, MiniMax-M2.5 (via DashScope). GPT-5.4 uses Codex CLI with OAuth authentication (no API key needed; run `codex auth` first).
 
 ## Paper Structure
 
