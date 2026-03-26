@@ -894,31 +894,32 @@ Trust management~\citep{blaze1999policymaker, li2003rt} addresses the distribute
 
 \begin{table}[!ht]
 \centering
-\caption{Feature comparison: existing authorization systems vs.\ authority models.}
+\caption{Feature comparison: classical authorization systems (left), agent-specific enforcement systems (center), and authority models (right).}
 \label{tab:comparison}
-\small
-\begin{tabular}{l c c c c c c}
+\footnotesize
+\setlength{\tabcolsep}{2.5pt}
+\begin{tabular}{@{}l c c c c c c c c c@{}}
 \toprule
-\textbf{Feature} & \textbf{RBAC} & \textbf{ABAC} & \textbf{Cedar} & \textbf{Zanzibar} & \textbf{OPA} & \textbf{Auth.\ Model} \\
+ & \textbf{RBAC} & \textbf{ABAC} & \textbf{Cedar} & \textbf{Zanzibar} & \textbf{OPA} & \textbf{Progent} & \textbf{Agt.Bound} & \textbf{Edictum} & \textbf{Auth.M.} \\
 \midrule
-\multicolumn{7}{l}{\textit{Agentic extensions (authority model focus):}} \\
-Principal $\neq$ Agent & -- & $\sim$\textsuperscript{c} & $\sim$ & -- & -- & \checkmark \\
-Escalate output & -- & -- & -- & -- & -- & \checkmark \\
-Session history & -- & $\sim$ & $\sim$\textsuperscript{a} & $\sim$\textsuperscript{d} & $\sim$ & \checkmark \\
-Budget constraints & -- & $\sim$ & $\sim$\textsuperscript{a} & -- & $\sim$ & \checkmark \\
-Pre-execution enforcement & PEP & PEP & PEP & Check & Admission & SDK/Gateway \\
+\multicolumn{10}{l}{\textit{Agentic extensions (authority model focus):}} \\
+Principal $\neq$ Agent & -- & $\sim$\textsuperscript{c} & $\sim$ & -- & -- & $\sim$ & -- & $\sim$\textsuperscript{f} & \checkmark \\
+Escalate output & -- & -- & -- & -- & -- & -- & -- & $\sim$\textsuperscript{e} & \checkmark \\
+Session history & -- & $\sim$ & $\sim$\textsuperscript{a} & $\sim$\textsuperscript{d} & $\sim$ & -- & -- & \checkmark & \checkmark \\
+Budget constraints & -- & $\sim$ & $\sim$\textsuperscript{a} & -- & $\sim$ & -- & -- & \checkmark & \checkmark \\
+Pre-execution enforc. & PEP & PEP & PEP & Check & Admission & DSL & MCP & SDK/Gw & SDK/Gw \\
 \midrule
-\multicolumn{7}{l}{\textit{Mature capabilities (competitor strengths):}} \\
-Policy expressiveness & -- & \checkmark & \checkmark & $\sim$ & \checkmark & $\sim$ \\
-Formal verification & -- & -- & \checkmark & -- & $\sim$\textsuperscript{b} & -- \\
-Global-scale deployment & -- & -- & -- & \checkmark & \checkmark & -- \\
-Delegation chains & RBAC$_2$ & Profile & -- & Relations & -- & \checkmark \\
-Ecosystem maturity & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & -- \\
+\multicolumn{10}{l}{\textit{Mature capabilities (competitor strengths):}} \\
+Policy expressiveness & -- & \checkmark & \checkmark & $\sim$ & \checkmark & \checkmark & $\sim$ & $\sim$ & $\sim$ \\
+Formal verification & -- & -- & \checkmark & -- & $\sim$\textsuperscript{b} & -- & -- & -- & $\sim$\textsuperscript{g} \\
+Global-scale deploy. & -- & -- & -- & \checkmark & \checkmark & -- & -- & -- & -- \\
+Delegation chains & RBAC$_2$ & Profile & -- & Relations & -- & -- & -- & -- & \checkmark \\
+Ecosystem maturity & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & -- & -- & $\sim$ & -- \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\noindent {\footnotesize \textsuperscript{a}Cedar can reference session-derived attributes if the application provides them in the request context; it lacks a \emph{built-in} session history mechanism but does not prevent the application from implementing one. \textsuperscript{b}Rego forbids recursion and is designed to terminate; formal decidability is a consequence of the restricted evaluation model, though no published proof exists. Cedar's policy language has been formally verified in Lean~4. \textsuperscript{c}ABAC subject attributes can encode \texttt{delegated\_by}, achieving $P \neq G$ as a policy constraint rather than a first-class primitive. \textsuperscript{d}Zanzibar can model session history as relationship tuples, though this is not idiomatic.}
+\noindent {\footnotesize \textsuperscript{a}Cedar can reference session-derived attributes if the application provides them in the request context; it lacks a \emph{built-in} session history mechanism but does not prevent the application from implementing one. \textsuperscript{b}Rego forbids recursion and is designed to terminate; formal decidability is a consequence of the restricted evaluation model, though no published proof exists. Cedar's policy language has been formally verified in Lean~4. \textsuperscript{c}ABAC subject attributes can encode \texttt{delegated\_by}, achieving $P \neq G$ as a policy constraint rather than a first-class primitive. \textsuperscript{d}Zanzibar can model session history as relationship tuples, though this is not idiomatic. \textsuperscript{e}Edictum provides HITL approval gates that route flagged actions to human review, analogous to $\Escalate$ but without a formal three-valued output type. \textsuperscript{f}Edictum policies distinguish principal from agent as a configuration-level concept rather than a first-class formal primitive. \textsuperscript{g}Decidability, deny-monotonicity, escalation monotonicity, and policy soundness are proved; proofs are pen-and-paper, not mechanized.}
 
 \noindent The contribution is not inventing authorization---these systems are more mature, more expressive, and more battle-tested. It is identifying which extensions they need for the agentic setting (principal--agent separation, escalation, session history) and proving that those extensions preserve desirable formal properties.
 
@@ -942,11 +943,11 @@ AuthorityBench measures critic type directly. Prompt-only is soft: the LLM ``dec
 
 The per-model spread demands direct examination. GPT-5.4 achieves $\mathrm{VR}(P2) = 1.0\%$ under prompt-only conditions---nearly matching the authority model. If frontier alignment continues improving, one might ask whether authority models remain necessary. We think the question is misframed. First, the aggregate $\mathrm{VR}(P2) = 18.3\%$ reflects the population of deployed models, not just the frontier; MiniMax-M2.5 reaches 40.0\%, and organizations cannot guarantee which model will process a given request across vendors, versions, and fine-tunes. Second, 1\% is not 0\%: at scale (millions of tool calls), even GPT-5.4's residual rate produces thousands of unauthorized actions. Third, alignment provides no \emph{guarantee}---the 1\% could shift to 5\% with a model update, a system prompt change, or a more sophisticated P2 framing, because the mechanism is probabilistic. Authority models provide an architectural invariant: $\mathrm{VR} = 0.0\%$ regardless of model, framing, or update cadence. Alignment makes models want to comply; authority models enforce compliance regardless. Neither substitutes for the other: alignment handles P3 (overt override prompts largely fail on alignment grounds); authority models handle the P2 residual where ambient framing evades refusal. Two layers, two jobs.
 
-Agent-SafetyBench evaluates 16 LLM agents across 2,000 test cases with an average safety score of 38.5\%~\citep{zhang2024agentsafetybench}. R-Judge benchmarks safety risk awareness across 162 agent trajectories~\citep{yuan2024rjudge}. OpenAgentSafety reports agents that ``disregard authorization entirely''~\citep{vijayvargiya2025openagentsafety}. ToolEmu finds even the safest agents exhibit severe failures 23.9\% of the time~\citep{ruan2024toolemu}. AgentHarm measures harmfulness of agent actions~\citep{andriushchenko2024agentharm}. MCP-SafetyBench demonstrates that MCP's openness introduces new safety risks~\citep{zong2025mcpsafetybench}. Potham benchmarks adherence to hierarchical safety principles~\citep{potham2025hierarchical}. Commercial LLM agents are vulnerable to simple attacks~\citep{li2025commercialvulnerable}. These benchmarks measure \emph{safety} (harm avoidance) and \emph{compliance} (instruction following), not \emph{authorization} (scope enforcement).
+Agent-SafetyBench evaluates 16 LLM agents across 2,000 test cases with an average safety score of 38.5\%~\citep{zhang2024agentsafetybench}. R-Judge benchmarks safety risk awareness across 162 agent trajectories~\citep{yuan2024rjudge}. OpenAgentSafety reports agents that ``disregard authorization entirely''~\citep{vijayvargiya2025openagentsafety}. ToolEmu finds even the safest agents exhibit severe failures 23.9\% of the time~\citep{ruan2024toolemu}. AgentHarm measures harmfulness of agent actions~\citep{andriushchenko2024agentharm}. MCP-SafetyBench demonstrates that MCP's openness introduces new safety risks~\citep{zong2025mcpsafetybench}. Potham benchmarks adherence to hierarchical safety principles~\citep{potham2025hierarchical}. Commercial LLM agents are vulnerable to simple attacks~\citep{li2025commercialvulnerable}. These benchmarks measure \emph{safety} (harm avoidance) and \emph{compliance} (instruction following), not \emph{authorization} (scope enforcement). The GAP benchmark provides large-scale evidence that text-level safety alignment does not transfer to tool-call authorization, evaluating six frontier models across 17,420 datapoints~\citep{cartagena2026gap}. This finding directly motivates authority models: if safety training does not reliably generalize to tool-call scope enforcement, a separate enforcement mechanism is required.
 
 \begin{table}[!ht]
 \centering
-\caption{Authorization coverage gap across agent safety benchmarks. Auth = evaluates authorization scope (not just harm avoidance); Arch = compares enforcement architectures; Args = argument-level constraints; ED/DAP = enforcement determinism and adversarial delta metrics. $\checkmark$ = present; $-$ = absent.}
+\caption{Authorization coverage gap across agent safety benchmarks. Auth = evaluates authorization scope (not just harm avoidance); Arch = compares enforcement architectures; Args = argument-level constraints; ED/DAP = enforcement determinism and adversarial delta metrics. $\checkmark$ = present; $\sim$ = partial; $-$ = absent.}
 \label{tab:benchmark-gap}
 \small
 \begin{tabular}{lcccc}
@@ -961,6 +962,7 @@ AgentHarm~\citep{andriushchenko2024agentharm}       & $-$ & $-$ & $-$ & $-$ \\
 MCP-SafetyBench~\citep{zong2025mcpsafetybench}      & $-$ & $-$ & $-$ & $-$ \\
 Hierarchical Safety~\citep{potham2025hierarchical}   & $-$ & $-$ & $-$ & $-$ \\
 Commercial agents~\citep{li2025commercialvulnerable} & $-$ & $-$ & $-$ & $-$ \\
+GAP~\citep{cartagena2026gap}                         & $\sim$ & $-$ & $-$ & $-$ \\
 \midrule
 \textbf{AuthorityBench (ours)}                      & $\checkmark$ & $\checkmark$ & $\checkmark$ & $\checkmark$ \\
 \bottomrule
@@ -993,11 +995,23 @@ a\textbf{I}m & Action $\alpha$ & ``issue refund'' \\
 
 \noindent This positions authority models as a computational instantiation of Ostrom's institutional analysis framework~\citep{ostrom1990governing}. The $\May$ judgment operationalizes ``rules-in-use''---operational rules governing action within an institutional setting. At least five of Ostrom's eight design principles for governing common-pool resources map to authority model elements: clearly defined boundaries (delegated scope), congruence between rules and local conditions (contextual constraints), collective-choice arrangements (approval mechanisms), monitoring (audit trail), and graduated sanctions (escalation before denial).
 
+\subsection{System-Level Agent Authorization}
+
+Several systems implement runtime enforcement of policies on agent tool calls---the closest related work to authority models.
+
+Progent provides a domain-specific language for privilege policies governing LLM agents, with deterministic runtime enforcement and provable security guarantees~\citep{shi2025progent}. Authority models formalize the properties any such policy language needs to satisfy: deny-monotonicity (\Cref{thm:deny-mono}), enforcement determinism (\Cref{prop:ed}), and decidability (\Cref{thm:decidability}). Progent's DSL addresses a similar policy-specification problem to $L_{\mathrm{auth}}$; given Progent's design emphasis on deterministic evaluation, it is plausible that its language operates within a decidable fragment, in which case the formal results established here would apply directly.
+
+\citet{buhler2025agentbound} propose an access control framework for MCP servers, implementing enforcement via containerized execution environments (filesystem mounts, network rules, environment whitelists) around tool providers. AgentBound addresses the enforcement \emph{where} question (at the MCP server boundary); authority models address the enforcement \emph{what} question (which formal properties the enforcement mechanism must satisfy). The \Can/\May{} separation (\Cref{thm:canmay}) applies directly: an MCP server exposes capabilities (\Can); an authorization layer must independently determine legitimacy (\May).
+
+Edictum implements deterministic contract enforcement at the tool-call boundary with YAML policies, deny-overrides composition, session limits, human-in-the-loop approval gates, audit trails, and shadow mode~\citep{cartagena2026edictum}---a closely related enforcement architecture to that described in \Cref{sec:implementation}. Edictum's design choices (deny-overrides, deterministic evaluation, explicit escalation paths) are independently motivated by practical requirements; authority models provide formal justification for these same choices: deny-monotonicity (\Cref{thm:deny-mono}) explains why deny-overrides is the correct composition operator, enforcement determinism (\Cref{prop:ed}) explains why non-deterministic evaluation is insufficient, and the escalation theorem (\Cref{thm:escalation}) explains why human deferral must be a distinct output from denial. The convergence of independent engineering and independent formalization on the same architectural pattern is itself evidence that these properties are fundamental rather than accidental.
+
+\noindent That three independent systems---a policy DSL, an MCP-layer enforcement point, and a full runtime engine---converge on the same architectural choices (deny-overrides, pre-execution mediation, deterministic evaluation) without shared lineage is notable. Authority models do not compete with these systems; they characterize the formal properties underlying them. Concretely, the formalism enables questions that no individual system can answer about itself: whether composing two enforcement mechanisms preserves deny-monotonicity, whether a Progent policy is strictly more restrictive than an Edictum contract, or whether a given enforcement point satisfies the completeness conditions of \Cref{thm:decidability}. The theorems established above apply to any system that operates within the same decision space, providing a common analytical framework for evaluating, comparing, and composing agent authorization mechanisms.
+
 \subsection{Emerging Agent Governance}
 
 AgentSpec provides customizable runtime enforcement with a domain-specific policy language~\citep{wang2025agentspec}. ShieldAgent implements verifiable safety reasoning at execution time~\citep{chen2025shieldagent}. Kaptein et al.\ propose runtime governance via ``policies on paths''---constraint sequences over execution traces---which addresses sequential action authorization at the path level~\citep{kaptein2026runtimegovernance}. Gaurav et al.\ propose Governance-as-a-Service for multi-agent compliance~\citep{gaurav2025gaas}. Policy Cards propose machine-readable governance artifacts~\citep{mavracic2025policycards}. Agent Contracts formalize resource-bounded execution~\citep{ye2026agentcontracts}. South et al.\ develop authenticated delegation extending OAuth~2.0 and OpenID Connect~\citep{south2025authenticated, south2025identitymgmt, nagabhushanaradhya2025oidca}. Institutional AI reframes alignment as mechanism design~\citep{pierucci2026institutionalai, bracale2026institutionalcournot}. Authority models sit at the intersection of these approaches, providing a formal decision function that unifies identity (who is the agent?), delegation (what scope was granted?), and policy (is this request within scope?)---with formal properties established for decidability and monotonicity.
 
-Authority models provide the formal substrate these works presuppose: a decision function over $(P, G, \alpha, R, C, H, \Pi)$ with proven decidability and monotonicity properties. Without a formal foundation, governance frameworks cannot be compared, composed, or audited.
+Authority models offer a formal substrate for this emerging space: a decision function over $(P, G, \alpha, R, C, H, \Pi)$ with proven decidability and monotonicity properties, against which governance frameworks can be evaluated and compared.
 
 
 % ══════════════════════════════════════════════════════════════════════

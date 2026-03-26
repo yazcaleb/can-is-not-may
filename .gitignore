@@ -19,6 +19,9 @@ AGENTS.md
 .cursor/
 .aider*
 
+# Private notes (never commit)
+TODO.md
+
 # AuthorityBench intermediate outputs
 authoritybench/__pycache__/
 authoritybench/results/*.log
