@@ -6,7 +6,7 @@
 
 ## Paper
 
-[**Download PDF**](https://github.com/yazcaleb/can-is-not-may/releases/latest) (auto-compiled from `main` on every push)
+[**Download PDF**](https://github.com/yazcaleb/can-is-not-may/releases/download/latest/can_is_not_may.pdf) (auto-compiled from `main` on every push)
 
 - **Source**: [`main.tex`](main.tex) (~17 pages, 9 sections + appendices)
 - **Bibliography**: [`references.bib`](references.bib) (28 citations with DOIs)
